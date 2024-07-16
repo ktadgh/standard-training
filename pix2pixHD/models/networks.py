@@ -403,42 +403,27 @@ class Vgg19(torch.nn.Module):
         out = [h_relu1, h_relu2, h_relu3, h_relu4, h_relu5]
         return out
 
-def zca_whitening_matrix(X):
-    """
-    Function to compute ZCA whitening matrix (aka Mahalanobis whitening).
-    INPUT:  X: [M x N] matrix.
-        Rows: Variables
-        Columns: Observations
-    OUTPUT: ZCAMatrix: [M x M] matrix
-    """
-    # Covariance matrix [column-wise variables]: Sigma = (X-mu)' * (X-mu) / N
-    sigma = np.cov(X, rowvar=True) # [M x M]
-    # Singular Value Decomposition. X = U * np.diag(S) * V
-    U,S,V = np.linalg.svd(sigma)
-        # U: [M x M] eigenvectors of sigma.
-        # S: [M x 1] eigenvalues of sigma.
-        # V: [M x M] transpose of U
-    # Whitening constant: prevents division by zero
-    epsilon = 1e-5
-    # ZCA Whitening matrix: U * Lambda * U'
-    ZCAMatrix = np.dot(U, np.dot(np.diag(1.0/np.sqrt(S + epsilon)), U.T)) # [M x M]
-    return ZCAMatrix
+
+from kornia.enhance import ZCAWhitening
+
 
 
 class DistillLoss(torch.nn.Module):
     def __init__(self, teacher, student):
         super().__init__()
-        self.teacher = teacher
-        self.student = student
+        self.teacher = teacher.cuda()
+        self.student = student.cuda()
 
     def forward(self,x):
-        student_matrix = self.student.patches_for_distillation.mean(dim=(1,2))
-        _ = self.teacher(x)
-        _ = self.student(x)
+        student_matrix = self.student.model.patches_for_distillation.mean(dim=(1,2))
+        _ = self.teacher(x.cuda())
+        _ = self.student(x.cuda())
         with torch.no_grad():
-            teacher_matrix = self.teacher.patches_for_distillation.detach().mean(dim=(1,2))
-            ZCA = zca_whitening_matrix(teacher_matrix)
-            whitened_teacher = ZCA @ teacher_matrix
-        raise ValueError(whitened_teacher.T @ whitened_teacher)
-        loss = torch.norm(torch.abs(student_matrix-whitened_teacher), p='fro')
+            teacher_matrix = self.teacher.model.patches_for_distillation.detach().mean(dim=(1,2))
+            zca = ZCAWhitening()
+            sqrt_n = torch.sqrt(torch.tensor(teacher_matrix.shape[0], dtype=torch.float32))
+            whitened_teacher = zca(teacher_matrix, include_fit = True)*(sqrt_n)/(teacher_matrix.shape[0]-1)
+        
+        raise ValueError(student_matrix.shape,whitened_teacher.shape, (whitened_teacher @ whitened_teacher.T).diag())
+        loss = torch.norm(torch.abs(student_matrix-whitened_teacher), p='fro')**2
 

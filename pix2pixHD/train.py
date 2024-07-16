@@ -68,8 +68,7 @@ display_delta = total_steps % opt.display_freq
 print_delta = total_steps % opt.print_freq
 save_delta = total_steps % opt.save_latest_freq
 
-
-distill_loss = DistillLoss(teacher.model, model.module.netG.model)
+distill_loss = DistillLoss(teacher, model.module.netG)
 
 for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
     epoch_start_time = time.time()
@@ -85,6 +84,8 @@ for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
         save_fake = total_steps % opt.display_freq == display_delta
 
         ############## Forward Pass ######################
+        if i ==0:
+            save_fake = True
         losses, generated = model(Variable(data['label']), Variable(data['inst']), 
             Variable(data['image']), Variable(data['feat']), infer=save_fake)
         
