@@ -1,0 +1,3 @@
+[submodule "k-diffusion-onnx"]
+	path = k-diffusion-onnx
+	url = git@github.com:username/k-diffusion-onnx.git
