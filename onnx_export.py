@@ -16,7 +16,8 @@ from PIL import Image
 for file in os.listdir('/home/ubuntu/transformer-distillation/configs/hdit-shifted-windows'):
     if 'patchsize' not in file:
         continue
-    config = '/home/ubuntu/transformer-distillation/configs/hdit-shifted-windows/'+ file
+    file = 'original-swin'
+    config = '/home/ubuntu/transformer-distillation/configs/hdit_shifted_window.json'#'/home/ubuntu/transformer-distillation/configs/hdit-shifted-windows/'+ file
     config = K.config.load_config(config)
 
     model = K.config.make_model(config).cuda()
@@ -68,3 +69,4 @@ for file in os.listdir('/home/ubuntu/transformer-distillation/configs/hdit-shift
     img = img * 2. - 1.
     img_bs2 = torch.randn((2,3,1024,1024))
     torch.onnx.export(pmodel.cpu(), (img_bs2.cpu()), of, opset_version = 17,do_constant_folding=False, export_params=True,input_names = ['input'],output_names = ['output'], verbose=False)
+    raise ValueError()
