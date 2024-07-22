@@ -1,8 +1,8 @@
 import time
 import os
 import numpy as np
-from options1.train_options import TrainOptions
-from options1.test_options import TestOptions
+from options.train_options import TrainOptions
+from options.test_options import TestOptions
 
 from thop import profile
 
@@ -17,7 +17,7 @@ from aim import Run, Image
 
 import cv2
 
-from data2.data_loader import CreateDataLoader
+from data.data_loader import CreateDataLoader
 from models.models import create_model
 import util.util as util
 from util.visualizer import Visualizer
@@ -120,13 +120,6 @@ def has_batchnorm(model):
 # Example usage
 
 ## Hardcoding affine = False 
-for module in model.netG.modules():
-    if isinstance(module, (torch.nn.InstanceNorm2d)):
-        module.affine = False
-
-for module in model.netD.modules():
-    if isinstance(module, (torch.nn.InstanceNorm2d)):
-        module.affine = False
 
 import sys
 
@@ -164,6 +157,8 @@ test_opt.no_flip=True
 test_opt.resize_or_crop = ''
 test_opt.batchSize =1
 test_opt.serial_batches = True
+test_opt.phase = 'val'
+
 test_opt.use_encoded_image = True
 test_data_loader = CreateDataLoader(test_opt)
 
@@ -176,7 +171,7 @@ if opt.fp16:
     model, [optimizer_G, optimizer_D] = amp.initialize(model, [model.optimizer_G, model.optimizer_D], opt_level='O1')             
     model = torch.nn.DataParallel(model, device_ids=opt.gpu_ids)
 else:
-    optimizer_G, optimizer_D = model.optimizer_G, model.optimizer_D
+    optimizer_G, optimizer_D = model.module.optimizer_G, model.module.optimizer_D
 
 total_steps = (start_epoch-1) * dataset_size + epoch_iter
 
@@ -186,19 +181,19 @@ save_delta = total_steps % opt.save_latest_freq
 
 if opt.resume_distill_epoch != 0:
     opt.resume_repo = opt.save_dir
-    g_checkpoint = torch.load(f'{opt.resume_repo}/epoch_{opt.resume_distill_epoch}_net_G.pth', map_location = model.device)
-    d_checkpoint = torch.load(f'{opt.resume_repo}/epoch_{opt.resume_distill_epoch}_net_D.pth', map_location = model.device)
+    g_checkpoint = torch.load(f'{opt.resume_repo}/epoch_{opt.resume_distill_epoch}_net_G.pth', map_location = model.module.device)
+    d_checkpoint = torch.load(f'{opt.resume_repo}/epoch_{opt.resume_distill_epoch}_net_D.pth', map_location = model.module.device)
 
-    og_checkpoint = torch.load( f'{opt.save_dir}/epoch_{opt.resume_distill_epoch}_optim-0.pth', map_location = model.device)
-    od_checkpoint = torch.load(f'{opt.save_dir}/epoch_{opt.resume_distill_epoch}_optim-1.pth', map_location = model.device)
+    og_checkpoint = torch.load( f'{opt.save_dir}/epoch_{opt.resume_distill_epoch}_optim-0.pth', map_location = model.module.device)
+    od_checkpoint = torch.load(f'{opt.save_dir}/epoch_{opt.resume_distill_epoch}_optim-1.pth', map_location = model.module.device)
 
-    model.netG.load_state_dict(g_checkpoint)
-    model.netD.load_state_dict(d_checkpoint)
+    model.module.netG.load_state_dict(g_checkpoint)
+    model.module.netD.load_state_dict(d_checkpoint)
 
 
     
-    model.optimizer_G.load_state_dict(og_checkpoint)
-    model.optimizer_D.load_state_dict(od_checkpoint)
+    model.module.optimizer_G.load_state_dict(og_checkpoint)
+    model.module.optimizer_D.load_state_dict(od_checkpoint)
     new_start_epoch = opt.resume_distill_epoch
 else:
     new_start_epoch = start_epoch
@@ -220,14 +215,14 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
         ############## Forward Pass ######################
         if i == 0:
             losses, generated = model.forward(Variable(data['label']), Variable(data['inst']), 
-                Variable(data['image']), Variable(data['feat']), run,infer=True)
+                Variable(data['image']), Variable(data['feat']),infer=True)
         else:
             losses, generated = model.forward(Variable(data['label']), Variable(data['inst']), 
-                Variable(data['image']), Variable(data['feat']), run,infer=False)       
+                Variable(data['image']), Variable(data['feat']),infer=False)       
 
         # sum per device losses
         losses = [ torch.mean(x) if not isinstance(x, int) else x for x in losses ]
-        loss_dict = dict(zip(model.loss_names, losses))
+        loss_dict = dict(zip(model.module.loss_names, losses))
 
         # calculate final loss scalar
         loss_D = (loss_dict['D_fake'] + loss_dict['D_real']) * 0.5
@@ -267,13 +262,6 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
             #call(["nvidia-smi", "--format=csv", "--query-gpu=memory.used,memory.free"]) 
 
 
-
-
-        ### save latest model
-        if total_steps % opt.save_latest_freq == save_delta:
-            print('saving the latest model (epoch %d, total_steps %d)' % (epoch, total_steps))
-            model.save('latest')            
-            np.savetxt(iter_path, (epoch, epoch_iter), delimiter=',', fmt='%d')
         if i ==0:
             gen1 = Image(util.tensor2im(generated.data[0]))
             real1 = Image(util.tensor2im(data['image'][0]))
@@ -294,26 +282,24 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
 
     if epoch % opt.save_epoch_freq == 0:
         print('saving the model at the end of epoch %d, iters %d' % (epoch, total_steps))        
-        model.save('latest')
-        model.save_networks(f'epoch_{epoch}')
-        model.save(epoch)
-        np.savetxt(iter_path, (epoch+1, 0), delimiter=',', fmt='%d')
-        torch.save(model.optimizer_G.state_dict(), f'{opt.save_dir}/epoch_{epoch}_optim-0.pth')
-        torch.save(model.optimizer_D.state_dict(), f'{opt.save_dir}/epoch_{epoch}_optim-1.pth')
+        torch.save(model.module.optimizer_G.state_dict(), f'checkpoints/{opt.name}/epoch_{epoch}_optim-0.pth')
+        torch.save(model.module.optimizer_D.state_dict(), f'checkpoints/{opt.name}/epoch_{epoch}_optim-1.pth')
+        torch.save(model.module.netG.state_dict(), f'checkpoints/{opt.name}/epoch_{epoch}_netG.pth')
+        torch.save(model.module.netD.state_dict(), f'checkpoints/{opt.name}/epoch_{epoch}netD.pth')
 
         os.makedirs('fake', exist_ok=True)
         os.makedirs('real', exist_ok=True)
         os.makedirs(f'fake/{epoch}', exist_ok=True)
         os.makedirs(f'real/{epoch}', exist_ok=True)
-       
         for i, data in enumerate(test_dataset):   
             ############## Forward Pass ######################
-            losses, generated = model.forward(Variable(data['label']), Variable(data['inst']), 
-                Variable(data['image']), Variable(data['feat']), run,infer=True)
-            gen1 = (util.tensor2im(generated.data[0]))
-            real1 = (util.tensor2im(data['image'][0]))
-            cv2.imwrite(f'fake/{epoch}/{i}.png', gen1)
-            cv2.imwrite(f'real/{epoch}/{i}.png', real1)
+            with torch.no_grad():
+                losses, generated = model.forward(Variable(data['label']), Variable(data['inst']), 
+                    Variable(data['image']), Variable(data['feat']),infer=True)
+                gen1 = (util.tensor2im(generated.data[0]))
+                real1 = (util.tensor2im(data['image'][0]))
+                cv2.imwrite(f'fake/{epoch}/{i}.png', gen1)
+                cv2.imwrite(f'real/{epoch}/{i}.png', real1)
         
 
 
@@ -327,8 +313,8 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
 
     ### instead of only training the local enhancer, train the entire network after certain iterations
     if (opt.niter_fix_global != 0) and (epoch == opt.niter_fix_global):
-        model.update_fixed_params()
+        model.module.update_fixed_params()
 
     ### linearly decay learning rate after certain iterations
     if epoch > opt.niter:
-        model.update_learning_rate()
+        model.module.update_learning_rate()

@@ -26,10 +26,10 @@ def get_norm_layer(norm_type='instance'):
     return norm_layer
 
 def define_G(input_nc, output_nc, ngf, netG, n_downsample_global=3, n_blocks_global=9, n_local_enhancers=1, 
-             n_blocks_local=3, norm='instance', gpu_ids=[]):    
+             n_blocks_local=3, norm='instance',config_path='NONE', gpu_ids=[]):    
     norm_layer = get_norm_layer(norm_type=norm)     
     if netG == 'global':    
-        netG = GlobalGenerator(input_nc, output_nc, ngf, n_downsample_global, n_blocks_global, norm_layer)       
+        netG = GlobalGenerator(input_nc, output_nc, ngf, n_downsample_global, n_blocks_global, norm_layer, config_path=config_path)       
     elif netG == 'local':        
         netG = LocalEnhancer(input_nc, output_nc, ngf, n_downsample_global, n_blocks_global, 
                                   n_local_enhancers, n_blocks_local, norm_layer)
@@ -183,10 +183,10 @@ class LocalEnhancer(nn.Module):
 
 class GlobalGenerator(nn.Module):
     def __init__(self, input_nc, output_nc, ngf=64, n_downsampling=3, n_blocks=9, norm_layer=nn.BatchNorm2d, 
-                 padding_type='reflect', teacher = False):
+                 padding_type='reflect',config_path='NONE', teacher = False):
         super().__init__()
         if teacher == False:
-            config = K.config.load_config('/home/ubuntu/transformer-distillation/k-diffusion-onnx/configs/hdit.json')
+            config = K.config.load_config(config_path)
         else:
             config = K.config.load_config('/home/ubuntu/transformer-distillation/k-diffusion-onnx/configs/hdit.json')
         self.model = K.config.make_model(config).cuda()
