@@ -415,7 +415,7 @@ class DistillLoss(torch.nn.Module):
         self.student = student.cuda()
 
     def forward(self,x):
-        student_matrix = self.student.netG.model.patches_for_distillation.mean(dim=(1,2))
+        student_matrix = self.student.netG.projector(self.student.netG.model.patches_for_distillation.mean(dim=(1,2)))
         _ = self.teacher.netG(x.cuda())
         _ = self.student.netG(x.cuda())
         with torch.no_grad():
@@ -427,8 +427,8 @@ class DistillLoss(torch.nn.Module):
             else:
                 teacher_matrix = teacher_matrix.T
                 sqrt_n = torch.sqrt(torch.tensor(teacher_matrix.shape[0]-1, dtype=torch.float64))
-                whitened_teacher = zca_whiten(teacher_matrix - teacher_matrix.mean(dim=0, keepdim=True), dim =0)/sqrt_n
-        
+                whitened_teacher = zca_whiten(teacher_matrix - teacher_matrix.mean(dim=0, keepdim=True), dim =0) /sqrt_n
+
         
         raise ValueError((whitened_teacher.T @ whitened_teacher).shape,(whitened_teacher.T @ whitened_teacher))
         loss = torch.norm(torch.abs(student_matrix-whitened_teacher), p='fro')**2
