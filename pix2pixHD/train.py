@@ -3,7 +3,7 @@ import os
 import numpy as np
 from options.train_options import TrainOptions
 from options.test_options import TestOptions
-
+from models.networks import DistillLoss
 from thop import profile
 
 import torch
@@ -199,6 +199,15 @@ else:
     new_start_epoch = start_epoch
 
 
+# loading the teacher... 
+teacher_opt = opt
+teacher_opt.config_path = '/home/ubuntu/transformer-distillation/configs/hdit.json'
+teacher_model = create_model(teacher_opt)
+teacher_checkpoint = torch.load('/home/ubuntu/transformer-distillation/200_net_G_hdit.pth')
+teacher_model.module.netG.load_state_dict(teacher_checkpoint, strict = False)
+
+dloss = DistillLoss(teacher_model.module, model.module)
+
 for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
     epoch_start_time = time.time()
     if epoch != start_epoch:
@@ -228,6 +237,7 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
         loss_D = (loss_dict['D_fake'] + loss_dict['D_real']) * 0.5
         loss_G = loss_dict['G_GAN'] + loss_dict.get('G_GAN_Feat',0) + loss_dict.get('G_VGG',0)
 
+        loss_G += dloss(data['label'])
 
         # tracking metrics with AIM
         run.track(loss_D, name = 'Disriminator loss')
