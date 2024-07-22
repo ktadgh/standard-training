@@ -405,14 +405,77 @@ class Vgg19(torch.nn.Module):
 
 
 from kornia.enhance import ZCAWhitening,zca_whiten
+from torch.nn.functional import conv2d
 
+class Whitening2d(nn.Module):
+    def __init__(self, num_features, momentum=0.01, track_running_stats=True, eps=0):
+        super(Whitening2d, self).__init__()
+        self.num_features = num_features
+        self.momentum = momentum
+        self.track_running_stats = track_running_stats
+        self.eps = eps
+
+        if self.track_running_stats:
+            self.register_buffer(
+                "running_mean", torch.zeros([1, self.num_features, 1, 1])
+            )
+            self.register_buffer("running_variance", torch.eye(self.num_features))
+
+    def forward(self, x):
+        x = x.unsqueeze(2).unsqueeze(3)
+        m = x.mean(0).view(self.num_features, -1).mean(-1).view(1, -1, 1, 1)
+        if not self.training and self.track_running_stats:  # for inference
+            m = self.running_mean
+        xn = x - m
+
+        T = xn.permute(1, 0, 2, 3).contiguous().view(self.num_features, -1)
+        f_cov = torch.mm(T, T.permute(1, 0)) / (T.shape[-1] - 1)
+
+        eye = torch.eye(self.num_features).type(f_cov.type())
+
+        # if not self.training and self.track_running_stats:  # for inference
+        #     f_cov = self.running_variance
+
+        f_cov_shrinked = (1 - self.eps) * f_cov + self.eps * eye
+
+        inv_sqrt = torch.linalg.solve_triangular(
+            torch.linalg.cholesky(f_cov_shrinked),
+            eye, 
+            upper=False
+            )
+        
+        inv_sqrt = inv_sqrt.contiguous().view(
+            self.num_features, self.num_features, 1, 1
+        )
+
+        decorrelated = conv2d(xn, inv_sqrt)
+
+        if self.training and self.track_running_stats:
+            self.running_mean = torch.add(
+                self.momentum * m.detach(),
+                (1 - self.momentum) * self.running_mean,
+                out=self.running_mean,
+            )
+            self.running_variance = torch.add(
+                self.momentum * f_cov.detach(),
+                (1 - self.momentum) * self.running_variance,
+                out=self.running_variance,
+            )
+
+        return decorrelated.squeeze(2).squeeze(2)
+
+    def extra_repr(self):
+        return "features={}, eps={}, momentum={}".format(
+            self.num_features, self.eps, self.momentum
+        )
 
 
 class DistillLoss(torch.nn.Module):
-    def __init__(self, teacher, student):
+    def __init__(self, teacher, student,batch_size=2):
         super().__init__()
         self.teacher = teacher.cuda()
         self.student = student.cuda()
+        self.whitener = Whitening2d(batch_size, eps = 1e-10).cuda()
 
     def forward(self,x):
         student_matrix = self.student.netG.projector(self.student.netG.model.patches_for_distillation.mean(dim=(1,2)))
@@ -420,16 +483,10 @@ class DistillLoss(torch.nn.Module):
         _ = self.student.netG(x.cuda())
         with torch.no_grad():
             teacher_matrix = self.teacher.netG.model.patches_for_distillation.detach().mean(dim=(1,2))
-
             batches,feats = teacher_matrix.shape
-            if batches > feats:
-                raise ValueError()
-            else:
-                teacher_matrix = teacher_matrix.T
-                sqrt_n = torch.sqrt(torch.tensor(teacher_matrix.shape[0]-1, dtype=torch.float64))
-                whitened_teacher = zca_whiten(teacher_matrix - teacher_matrix.mean(dim=0, keepdim=True), dim =0) /sqrt_n
+            sqrt_n = torch.sqrt(torch.tensor(teacher_matrix.shape[0]-1, dtype=torch.float64))
+            wt = self.whitener(teacher_matrix.T).T/sqrt_n
 
-        
-        raise ValueError((whitened_teacher.T @ whitened_teacher).shape,(whitened_teacher.T @ whitened_teacher))
-        loss = torch.norm(torch.abs(student_matrix-whitened_teacher), p='fro')**2
+        loss = torch.norm(torch.abs(student_matrix-wt), p='fro')**2
+        return loss
 
