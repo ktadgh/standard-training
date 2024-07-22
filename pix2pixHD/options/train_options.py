@@ -32,5 +32,6 @@ class TrainOptions(BaseOptions):
         self.parser.add_argument('--pool_size', type=int, default=0, help='the size of image buffer that stores previously generated images')
         self.parser.add_argument('--experiment_name', type = str, default='exp', help='do *not* use least square GAN, if false, use vanilla GAN')
         self.parser.add_argument('--resume_distill_epoch', type=int, default=0, help='epoch to resume from')
+        self.parser.add_argument('--alpha', type=int, default=0, help='distillation loss weight')
 
         self.isTrain = True
