@@ -407,11 +407,13 @@ class Vgg19(torch.nn.Module):
 from kornia.enhance import ZCAWhitening,zca_whiten
 
 
+
 class DistillLoss(torch.nn.Module):
-    def __init__(self, teacher, student):
+    def __init__(self, teacher, student,batch_size=2):
         super().__init__()
         self.teacher = teacher.cuda()
         self.student = student.cuda()
+        self.whitener = Whitening2d(batch_size, eps = 1e-10).cuda()
 
     def forward(self,x):
         student_matrix = self.student.netG.projector(self.student.netG.model.patches_for_distillation.mean(dim=(1,2)))
@@ -419,7 +421,6 @@ class DistillLoss(torch.nn.Module):
         _ = self.student.netG(x.cuda())
         with torch.no_grad():
             teacher_matrix = self.teacher.netG.model.patches_for_distillation.detach().mean(dim=(1,2))
-
             batches,feats = teacher_matrix.shape
             if batches > feats:
                 raise ValueError()
@@ -428,7 +429,7 @@ class DistillLoss(torch.nn.Module):
                 sqrt_n = torch.sqrt(torch.tensor(teacher_matrix.shape[0]-1, dtype=torch.float64))
                 whitened_teacher = zca_whiten(teacher_matrix - teacher_matrix.mean(dim=0, keepdim=True), dim =0) /sqrt_n
 
-        other_whiten = 
+        
         raise ValueError((whitened_teacher.T @ whitened_teacher).shape,(whitened_teacher.T @ whitened_teacher))
         loss = torch.norm(torch.abs(student_matrix-whitened_teacher), p='fro')**2
 
