@@ -154,24 +154,20 @@ providers = [
     ('TensorrtExecutionProvider', {
         'device_id': 0, # The device ID
         'trt_max_workspace_size': 46e9, # Maximum workspace size for TensorRT engine (1e9 ≈ 1GB)
-        'trt_engine_cache_enable': False, # Enable TensorRT engine caching
-        'trt_int8_enable': True, # Enable INT8 mode in TensorRT
+        'trt_engine_cache_enable': True, # Enable TensorRT engine caching
+        'trt_fp16_enable': True, # Enable INT8 mode in TensorRT
         'trt_int64_enable': True, # Enable INT8 mode in TensorRT
-        'trt_engine_cache_enable':False,
         'trt_context_memory_sharing_enable':True,
-        'trt_auxiliary_streams':0, # will give optimal memory usage
-        'trt_int8_calibration_table_name': 'calibration.flatbuffers', # INT8 calibration table file for non-QDQ models in INT8 mode
     })
 ]
 ort.set_default_logger_severity(1)
 sess_opt = ort.SessionOptions()
-sess_opt.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
+sess_opt.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
 sess_opt.enable_mem_pattern = True
 sess_opt.use_deterministic_compute = True
-sess_opt.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+sess_opt.execution_mode = ort.ExecutionMode.ORT_PARALLEL
 sess_opt.enable_cpu_mem_arena = True
 sess_opt.log_severity_level = 1
-sess_opt.intra_op_num_threads = 1
 
 # Load the model and create an InferenceSession
 
@@ -184,7 +180,7 @@ session = ort.InferenceSession(onnx_file_path, sess_options=sess_opt, providers=
 
 x = np.random.rand(1,3,512,512).astype(np.float32)
 import time
-for _ in range(50):
+for _ in range(5):
     t0 = time.time()
     (session.run(None, {"input": x}))
     t1 = time.time()

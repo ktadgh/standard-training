@@ -407,7 +407,6 @@ class Vgg19(torch.nn.Module):
 from kornia.enhance import ZCAWhitening,zca_whiten
 
 
-
 class DistillLoss(torch.nn.Module):
     def __init__(self, teacher, student):
         super().__init__()
@@ -429,7 +428,7 @@ class DistillLoss(torch.nn.Module):
                 sqrt_n = torch.sqrt(torch.tensor(teacher_matrix.shape[0]-1, dtype=torch.float64))
                 whitened_teacher = zca_whiten(teacher_matrix - teacher_matrix.mean(dim=0, keepdim=True), dim =0) /sqrt_n
 
-        
+        other_whiten = 
         raise ValueError((whitened_teacher.T @ whitened_teacher).shape,(whitened_teacher.T @ whitened_teacher))
         loss = torch.norm(torch.abs(student_matrix-whitened_teacher), p='fro')**2
 
