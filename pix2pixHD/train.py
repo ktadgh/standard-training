@@ -131,7 +131,8 @@ args_to_remove = [
     ('--niter_decay', str(opt.niter_decay)),
     ('--resume_distill_epoch', str(opt.niter_decay)),
     ('--save_epoch_freq', str(opt.save_epoch_freq)),
-    ('--resume_distill_epoch', str(opt.resume_distill_epoch))
+    ('--resume_distill_epoch', str(opt.resume_distill_epoch)),
+    ('--alpha', str(opt.alpha))
 ]
 
 print(" args:", sys.argv)
@@ -142,13 +143,19 @@ for i, arg in enumerate(sys.argv):
     if skip_next:
         skip_next = False
         continue
-    print(arg)
-    print([f'\n key = {key}' for key, v in args_to_remove])
+    if i + 1 < len(sys.argv):
+        print(arg,sys.argv[i + 1])
+    for key, value in args_to_remove:
+        if key==arg:
+            print(value, sys.argv[i+1], sys.argv[i+1]==value)
+    # print([f'\n key = {key}' for key, v in args_to_remove])
 
     if any(arg == key and (i + 1 < len(sys.argv) and sys.argv[i + 1] == value) for key, value in args_to_remove):
         skip_next = True  # Skip the next value since it's part of the key-value pair to remove
     else:
+        print(f'arg added = {arg}')
         filtered_args.append(arg)
+
 sys.argv = filtered_args
 
 
@@ -180,12 +187,12 @@ print_delta = total_steps % opt.print_freq
 save_delta = total_steps % opt.save_latest_freq
 
 if opt.resume_distill_epoch != 0:
-    opt.resume_repo = opt.save_dir
-    g_checkpoint = torch.load(f'{opt.resume_repo}/epoch_{opt.resume_distill_epoch}_net_G.pth', map_location = model.module.device)
-    d_checkpoint = torch.load(f'{opt.resume_repo}/epoch_{opt.resume_distill_epoch}_net_D.pth', map_location = model.module.device)
+    opt.resume_repo = opt.name
+    g_checkpoint = torch.load(f'checkpoints/{opt.resume_repo}/epoch_{opt.resume_distill_epoch}_netG.pth', map_location = 'cuda:0')
+    d_checkpoint = torch.load(f'checkpoints/{opt.resume_repo}/epoch_{opt.resume_distill_epoch}netD.pth', map_location = 'cuda:0')
 
-    og_checkpoint = torch.load( f'{opt.save_dir}/epoch_{opt.resume_distill_epoch}_optim-0.pth', map_location = model.module.device)
-    od_checkpoint = torch.load(f'{opt.save_dir}/epoch_{opt.resume_distill_epoch}_optim-1.pth', map_location = model.module.device)
+    og_checkpoint = torch.load( f'checkpoints/{opt.resume_repo}/epoch_{opt.resume_distill_epoch}_optim-0.pth', map_location = 'cuda:0')
+    od_checkpoint = torch.load(f'checkpoints/{opt.resume_repo}/epoch_{opt.resume_distill_epoch}_optim-1.pth', map_location = 'cuda:0')
 
     model.module.netG.load_state_dict(g_checkpoint)
     model.module.netD.load_state_dict(d_checkpoint)
@@ -212,7 +219,10 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
     epoch_start_time = time.time()
     if epoch != start_epoch:
         epoch_iter = epoch_iter % dataset_size
+
+    dloss_data = []
     for i, data in enumerate(dataset, start=epoch_iter):
+
         if total_steps % opt.print_freq == print_delta:
             iter_start_time = time.time()
         total_steps += opt.batchSize
@@ -236,14 +246,23 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
         # calculate final loss scalar
         loss_D = (loss_dict['D_fake'] + loss_dict['D_real']) * 0.5
         loss_G = loss_dict['G_GAN'] + loss_dict.get('G_GAN_Feat',0) + loss_dict.get('G_VGG',0)
-
-        loss_G += dloss(data['label'])
+        
+        if opt.alpha > 0:
+            dloss_data.append(data['label'])
+            if len(dloss_data) >= 3:
+                dloss_data = torch.cat(dloss_data)
+                dloss_val = dloss(dloss_data, run)
+                run.track(dloss_val.detach()*opt.alpha, name = 'Distillation loss (weighted)')
+                loss_G += dloss_val*opt.alpha
+                dloss_data = []
+            
+        
 
         # tracking metrics with AIM
-        run.track(loss_D, name = 'Disriminator loss')
-        run.track(loss_dict['G_GAN'], name = 'GAN loss (default is hinge)')
-        run.track(loss_dict.get('G_GAN_Feat',0), name = 'Feature Loss')
-        run.track(loss_dict.get('G_VGG',0), name = 'VGG loss')
+        run.track(loss_D.detach(), name = 'Disriminator loss')
+        run.track(loss_dict['G_GAN'].detach(), name = 'GAN loss (default is hinge)')
+        run.track(loss_dict.get('G_GAN_Feat',0).detach(), name = 'Feature Loss')
+        run.track(loss_dict.get('G_VGG',0).detach(), name = 'VGG loss')
 
         ############### Backward Pass ####################
         # update generator weights
@@ -283,6 +302,7 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
             run.track(real1, name = 'real image')
             run.track(inp1, name = 'input image')
 
+
     # end of epoch 
     iter_end_time = time.time()
     print('End of epoch %d / %d \t Time Taken: %d sec' %
@@ -310,10 +330,11 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
                 real1 = (util.tensor2im(data['image'][0]))
                 cv2.imwrite(f'fake/{epoch}/{i}.png', gen1)
                 cv2.imwrite(f'real/{epoch}/{i}.png', real1)
-        
 
+        del gen1
+        del real1
 
-
+        torch.cuda.empty_cache()
         fid = dir_fid(f'fake/{epoch}', f'real/{epoch}')
         lpipzz = dir_lpips(f'fake/{epoch}', f'real/{epoch}')
         psnr = dir_psnr(f'fake/{epoch}', f'real/{epoch}')

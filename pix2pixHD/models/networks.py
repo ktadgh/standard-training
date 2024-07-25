@@ -192,7 +192,7 @@ class GlobalGenerator(nn.Module):
         self.model = K.config.make_model(config).cuda()
 
         self.final_activation_function = nn.Tanh()
-        self.projector = torch.nn.utils.parametrizations.orthogonal(nn.Linear(128, 128, bias=False))
+        self.projector = torch.nn.utils.parametrizations.orthogonal(nn.Linear(64, 128, bias=False))
 
     def forward(self, input):
         cst = torch.ones((input.shape[0]), device=input.device)
@@ -469,24 +469,29 @@ class Whitening2d(nn.Module):
             self.num_features, self.eps, self.momentum
         )
 
+from aim import Image
 
 class DistillLoss(torch.nn.Module):
-    def __init__(self, teacher, student,batch_size=2):
+    def __init__(self, teacher, student,batch_size=3):
         super().__init__()
         self.teacher = teacher.cuda()
         self.student = student.cuda()
-        self.whitener = Whitening2d(batch_size, eps = 1e-10).cuda()
+        self.whitener = Whitening2d(batch_size, eps = 1).cuda()
 
-    def forward(self,x):
-        student_matrix = self.student.netG.projector(self.student.netG.model.patches_for_distillation.mean(dim=(1,2)))
+    def forward(self,x,run):
         _ = self.teacher.netG(x.cuda())
         _ = self.student.netG(x.cuda())
+        student_matrix = self.student.netG.projector(self.student.netG.model.patches_for_distillation.mean(dim=(1,2)))
+        smim = Image(student_matrix)
         with torch.no_grad():
             teacher_matrix = self.teacher.netG.model.patches_for_distillation.detach().mean(dim=(1,2))
             batches,feats = teacher_matrix.shape
             sqrt_n = torch.sqrt(torch.tensor(teacher_matrix.shape[0]-1, dtype=torch.float64))
             wt = self.whitener(teacher_matrix.T).T/sqrt_n
+        tmim = Image(teacher_matrix)
 
+        # run.track(smim, name='Student image')
+        # run.track(smim, name='Teacher image')
         loss = torch.norm(torch.abs(student_matrix-wt), p='fro')**2
         return loss
 
