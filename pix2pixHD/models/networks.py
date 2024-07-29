@@ -408,27 +408,101 @@ from kornia.enhance import ZCAWhitening,zca_whiten
 
 
 from aim import Image
+import torch
+import torch.nn as nn
+from torch.nn.functional import conv2d
+
+
+class Whitening2d(nn.Module):
+    def __init__(self, num_features, momentum=0.01, track_running_stats=True, eps=0):
+        super(Whitening2d, self).__init__()
+        self.num_features = num_features
+        self.momentum = momentum
+        self.track_running_stats = track_running_stats
+        self.eps = eps
+
+        if self.track_running_stats:
+            self.register_buffer(
+                "running_mean", torch.zeros([1, self.num_features, 1, 1])
+            )
+            self.register_buffer("running_variance", torch.eye(self.num_features))
+
+    def forward(self, x):
+        x = x.unsqueeze(2).unsqueeze(3)
+        m = x.mean(0).view(self.num_features, -1).mean(-1).view(1, -1, 1, 1)
+        if not self.training and self.track_running_stats:  # for inference
+            m = self.running_mean
+        xn = x - m
+
+        T = xn.permute(1, 0, 2, 3).contiguous().view(self.num_features, -1)
+        f_cov = torch.mm(T, T.permute(1, 0)) / (T.shape[-1] - 1)
+
+        eye = torch.eye(self.num_features).type(f_cov.type())
+
+        if not self.training and self.track_running_stats:  # for inference
+            f_cov = self.running_variance
+
+        f_cov_shrinked = (1 - self.eps) * f_cov + self.eps * eye
+
+        inv_sqrt = torch.linalg.solve_triangular(
+            torch.linalg.cholesky(f_cov_shrinked),
+            eye, 
+            upper=False
+            )
+        
+        inv_sqrt = inv_sqrt.contiguous().view(
+            self.num_features, self.num_features, 1, 1
+        )
+
+        decorrelated = conv2d(xn, inv_sqrt)
+
+        if self.training and self.track_running_stats:
+            self.running_mean = torch.add(
+                self.momentum * m.detach(),
+                (1 - self.momentum) * self.running_mean,
+                out=self.running_mean,
+            )
+            self.running_variance = torch.add(
+                self.momentum * f_cov.detach(),
+                (1 - self.momentum) * self.running_variance,
+                out=self.running_variance,
+            )
+
+        return decorrelated.squeeze(2).squeeze(2)
+
 
 class DistillLoss(torch.nn.Module):
     def __init__(self, teacher, student,batch_size=3):
         super().__init__()
         self.teacher = teacher.cuda()
         self.student = student.cuda()
+        self.batch_size = batch_size
         self.whitener = Whitening2d(batch_size, eps = 1).cuda()
 
     def forward(self,x,run):
-        _ = self.teacher.netG(x.cuda())
-        _ = self.student.netG(x.cuda())
-        student_matrix = self.student.netG.projector(self.student.netG.model.patches_for_distillation.mean(dim=(1,2)))
-        smim = Image(student_matrix)
-        with torch.no_grad():
-            teacher_matrix = self.teacher.netG.model.patches_for_distillation.detach().mean(dim=(1,2))
-            batches,feats = teacher_matrix.shape
-            sqrt_n = torch.sqrt(torch.tensor(teacher_matrix.shape[0]-1, dtype=torch.float64))
-            wt = self.whitener(teacher_matrix.T).T/sqrt_n
-        tmim = Image(teacher_matrix)
+        assert len(x)==self.batch_size, 'batch size is incorrect'
+        sxs = []
+        txs = []
 
-        # run.track(smim, name='Student image')
-        # run.track(smim, name='Teacher image')
-        loss = torch.norm(torch.abs(student_matrix-wt), p='fro')**2
+        for i in range(self.batch_size):
+            x_i = x[i].unsqueeze(0)
+            print(f'i = {i}')
+            _ = self.student.netG(x_i.cuda())
+            sx = self.student.netG.projector(self.student.netG.model.patches_for_distillation.mean(dim=(1,2)))
+            sxs.append(sx)
+
+        with torch.no_grad():
+            for i in range(self.batch_size):
+                _ = self.teacher.netG(x_i.cuda())
+                tx = self.teacher.netG.model.patches_for_distillation.detach().mean(dim=(1,2))
+                txs.append(tx)
+        
+            txs = torch.cat(txs, dim=0)
+            sqrt_n = torch.sqrt(torch.tensor(txs.shape[0]-1, dtype=torch.float64))
+            wt = self.whitener(txs.T).T/sqrt_n
+
+    
+        sxs = torch.cat(sxs, dim=0)
+
+        loss = torch.norm(torch.abs(sxs-wt), p='fro')**2
         return loss

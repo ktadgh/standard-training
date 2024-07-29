@@ -134,7 +134,6 @@ args_to_remove = [
     ('--resume_distill_epoch', str(opt.resume_distill_epoch)),
     ('--alpha', str(opt.alpha))
 ]
-
 print(" args:", sys.argv)
 filtered_args = []
 skip_next = False
@@ -219,7 +218,8 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
     epoch_start_time = time.time()
     if epoch != start_epoch:
         epoch_iter = epoch_iter % dataset_size
-
+    losses_G= 0
+    losses_D= 0
     dloss_data = []
     for i, data in enumerate(dataset, start=epoch_iter):
 
@@ -247,16 +247,34 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
         loss_D = (loss_dict['D_fake'] + loss_dict['D_real']) * 0.5
         loss_G = loss_dict['G_GAN'] + loss_dict.get('G_GAN_Feat',0) + loss_dict.get('G_VGG',0)
         
+        losses_G += loss_G
+        losses_D += loss_D
+
         if opt.alpha > 0:
             dloss_data.append(data['label'])
-            if len(dloss_data) >= 3:
+            if len(dloss_data) >= 1:
                 dloss_data = torch.cat(dloss_data)
                 dloss_val = dloss(dloss_data, run)
-                run.track(dloss_val.detach()*opt.alpha, name = 'Distillation loss (weighted)')
+                run.track(dloss_val.item()*opt.alpha, name = 'Distillation loss (weighted)')
                 loss_G += dloss_val*opt.alpha
                 dloss_data = []
-            
-        
+                optimizer_G.zero_grad() 
+                losses_G.backward()
+                optimizer_G.step()
+                optimizer_D.zero_grad()
+                losses_D.backward()
+                optimizer_D.step()    
+                losses_G = 0    
+                losses_D = 0
+        else:
+            optimizer_G.zero_grad() 
+            losses_G.backward()
+            optimizer_G.step()
+            optimizer_D.zero_grad()
+            losses_D.backward()
+            optimizer_D.step()    
+            losses_G = 0    
+            losses_D = 0
 
         # tracking metrics with AIM
         run.track(loss_D.detach(), name = 'Disriminator loss')
@@ -266,20 +284,8 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
 
         ############### Backward Pass ####################
         # update generator weights
-        optimizer_G.zero_grad()
-        if opt.fp16:                                
-            with amp.scale_loss(loss_G, optimizer_G) as scaled_loss: scaled_loss.backward()                
-        else:
-            loss_G.backward()          
-        optimizer_G.step()
 
-        # update discriminator weights
-        optimizer_D.zero_grad()
-        if opt.fp16:                                
-            with amp.scale_loss(loss_D, optimizer_D) as scaled_loss: scaled_loss.backward()                
-        else:
-            loss_D.backward()        
-        optimizer_D.step()        
+
 
         ############## Display results and errors ##########
         ### print out errors
