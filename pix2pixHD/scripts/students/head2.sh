@@ -1,1 +1,0 @@
-python train.py --name head2 --config_path /home/ubuntu/transformer-distillation/configs/hdit-shifted-windows/head2.json --experiment_name head2 --niter 50 --niter_decay 0 --save_epoch_freq 5 --dataroot "../../pix2pix_train_val_test" --batchSize 1 --label_nc 0 --no_instance --gpu_ids 0 --loadSize 1024 
