@@ -53,14 +53,14 @@ def dir_psnr(A, B):
 
 
 def dir_lpips(A, B):
-    loss_fn_alex = lpips.LPIPS(net='alex') # best forward scores
+    loss_fn_alex = lpips.LPIPS(net='alex').cuda() # best forward scores
     lpipz = []
     a_sorted = sorted(os.listdir(A))
     b_sorted = sorted(os.listdir(B))
     assert  a_sorted == b_sorted, "directory files are not identical"
     for i in tqdm(range(len(a_sorted))):
-        a_img = torchvision.io.read_image(A + '/' + a_sorted[i])/255.0
-        b_img = torchvision.io.read_image(B + '/' + b_sorted[i])/255.0
+        a_img = torchvision.io.read_image(A + '/' + a_sorted[i]).cuda()/255.0
+        b_img = torchvision.io.read_image(B + '/' + b_sorted[i]).cuda()/255.0
         
         with torch.no_grad():
             item = loss_fn_alex(a_img*2 -1, b_img*2 -1).item()
