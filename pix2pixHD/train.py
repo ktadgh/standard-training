@@ -43,11 +43,11 @@ def dir_psnr(A, B):
     b_sorted = sorted(os.listdir(B))
     assert  a_sorted == b_sorted, "directory files are not identical"
     for i in tqdm(range(len(a_sorted))):
-        a_img = torchvision.io.read_image(A + '/' + a_sorted[i])/255.0
-        b_img = torchvision.io.read_image(B + '/' + b_sorted[i])/255.0
+        a_img = torchvision.io.read_image(A + '/' + a_sorted[i]).cuda()/255.0
+        b_img = torchvision.io.read_image(B + '/' + b_sorted[i]).cuda()/255.0
         psnr.update(a_img, b_img)
         item = psnr.compute()
-        psnrs.append(item)
+        psnrs.append(item.cpu())
         psnr.reset()
     return np.array(psnrs).mean()
 
@@ -317,16 +317,17 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
 
 
     if epoch % opt.save_epoch_freq == 0:
-        print('saving the model at the end of epoch %d, iters %d' % (epoch, total_steps))        
-        torch.save(model.module.optimizer_G.state_dict(), f'checkpoints/{opt.name}/epoch_{epoch}_optim-0.pth')
-        torch.save(model.module.optimizer_D.state_dict(), f'checkpoints/{opt.name}/epoch_{epoch}_optim-1.pth')
-        torch.save(model.module.netG.state_dict(), f'checkpoints/{opt.name}/epoch_{epoch}_netG.pth')
-        torch.save(model.module.netD.state_dict(), f'checkpoints/{opt.name}/epoch_{epoch}netD.pth')
+        if epoch % 5 == 0:
+            print('saving the model at the end of epoch %d, iters %d' % (epoch, total_steps))        
+            torch.save(model.module.optimizer_G.state_dict(), f'checkpoints/{opt.name}/epoch_{epoch}_optim-0.pth')
+            torch.save(model.module.optimizer_D.state_dict(), f'checkpoints/{opt.name}/epoch_{epoch}_optim-1.pth')
+            torch.save(model.module.netG.state_dict(), f'checkpoints/{opt.name}/epoch_{epoch}_netG.pth')
+            torch.save(model.module.netD.state_dict(), f'checkpoints/{opt.name}/epoch_{epoch}netD.pth')
 
         os.makedirs('fake', exist_ok=True)
         os.makedirs('real', exist_ok=True)
-        os.makedirs(f'fake/{epoch}', exist_ok=True)
-        os.makedirs(f'real/{epoch}', exist_ok=True)
+        # os.makedirs(f'fake/{epoch}', exist_ok=True)
+        # os.makedirs(f'real/{epoch}', exist_ok=True)
         for i, data in enumerate(test_dataset):   
             ############## Forward Pass ######################
             with torch.no_grad():
@@ -334,16 +335,16 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
                     Variable(data['image']), Variable(data['feat']),infer=True)
                 gen1 = (util.tensor2im(generated.data[0]))
                 real1 = (util.tensor2im(data['image'][0]))
-                cv2.imwrite(f'fake/{epoch}/{i}.png', gen1)
-                cv2.imwrite(f'real/{epoch}/{i}.png', real1)
+                cv2.imwrite(f'fake/{i}.png', gen1)
+                cv2.imwrite(f'real/{i}.png', real1)
 
         del gen1
         del real1
 
         torch.cuda.empty_cache()
-        fid = dir_fid(f'fake/{epoch}', f'real/{epoch}')
-        lpipzz = dir_lpips(f'fake/{epoch}', f'real/{epoch}')
-        psnr = dir_psnr(f'fake/{epoch}', f'real/{epoch}')
+        fid = dir_fid(f'fake', f'real')
+        lpipzz = dir_lpips(f'fake', f'real')
+        psnr = dir_psnr(f'fake', f'real')
         run.track(psnr, name='PSNR')
         run.track(fid, name = 'FID')
         run.track(lpipzz, name = 'LPIPS')
