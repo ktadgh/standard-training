@@ -129,7 +129,6 @@ args_to_remove = [
     ('--experiment_name', opt.experiment_name),
     ('--niter', str(opt.niter)),
     ('--niter_decay', str(opt.niter_decay)),
-    ('--resume_distill_epoch', str(opt.niter_decay)),
     ('--save_epoch_freq', str(opt.save_epoch_freq)),
     ('--resume_distill_epoch', str(opt.resume_distill_epoch)),
     ('--alpha', str(opt.alpha))
@@ -153,7 +152,8 @@ for i, arg in enumerate(sys.argv):
         skip_next = True  # Skip the next value since it's part of the key-value pair to remove
     else:
         print(f'arg added = {arg}')
-        filtered_args.append(arg)
+        if arg != 'resume_distill_epoch':
+            filtered_args.append(arg)
 
 sys.argv = filtered_args
 
@@ -163,7 +163,7 @@ test_opt.no_flip=True
 test_opt.resize_or_crop = ''
 test_opt.batchSize =1
 test_opt.serial_batches = True
-test_opt.phase = 'val'
+test_opt.phase = 'test'
 
 test_opt.use_encoded_image = True
 test_data_loader = CreateDataLoader(test_opt)
@@ -207,13 +207,13 @@ else:
 
 # loading the teacher... 
 teacher_opt = opt
-teacher_opt.config_path = '/home/ubuntu/transformer-distillation/configs/hdit.json'
+teacher_opt.config_path = '/home/ubuntu/transformer-distillation/configs/hdit_shifted_window.json'
 teacher_model = create_model(teacher_opt)
-teacher_checkpoint = torch.load('/home/ubuntu/transformer-distillation/200_net_G_hdit.pth')
-teacher_model.module.netG.load_state_dict(teacher_checkpoint, strict = False)
+teacher_checkpoint = torch.load('/home/ubuntu/transformer-distillation/pix2pixHD/checkpoints/og1/epoch_200_netG.pth')
+teacher_model.module.netG.load_state_dict(teacher_checkpoint, strict = True)
+teacher_model.eval()
 
 dloss = DistillLoss(teacher_model.module, model.module)
-
 for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
     epoch_start_time = time.time()
     if epoch != start_epoch:
@@ -222,7 +222,7 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
     losses_D= 0
     dloss_data = []
     for i, data in enumerate(dataset, start=epoch_iter):
-
+        break
         if total_steps % opt.print_freq == print_delta:
             iter_start_time = time.time()
         total_steps += opt.batchSize
@@ -231,13 +231,16 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
         # whether to collect output images
         save_fake = total_steps % opt.display_freq == display_delta
         
+        with torch.no_grad():
+            teacher_image = teacher_model.module.netG(data['label'].cuda())
+
         ############## Forward Pass ######################
         if i == 0:
             losses, generated = model.forward(Variable(data['label']), Variable(data['inst']), 
-                Variable(data['image']), Variable(data['feat']),infer=True)
+                Variable(teacher_image), Variable(data['feat']),infer=True)
         else:
             losses, generated = model.forward(Variable(data['label']), Variable(data['inst']), 
-                Variable(data['image']), Variable(data['feat']),infer=False)       
+                Variable(teacher_image), Variable(data['feat']),infer=False)       
 
         # sum per device losses
         losses = [ torch.mean(x) if not isinstance(x, int) else x for x in losses ]
@@ -246,35 +249,15 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
         # calculate final loss scalar
         loss_D = (loss_dict['D_fake'] + loss_dict['D_real']) * 0.5
         loss_G = loss_dict['G_GAN'] + loss_dict.get('G_GAN_Feat',0) + loss_dict.get('G_VGG',0)
-        
-        losses_G += loss_G
-        losses_D += loss_D
 
-        if opt.alpha > 0:
-            dloss_data.append(data['label'])
-            if len(dloss_data) >= 1:
-                dloss_data = torch.cat(dloss_data)
-                dloss_val = dloss(dloss_data, run)
-                run.track(dloss_val.item()*opt.alpha, name = 'Distillation loss (weighted)')
-                loss_G += dloss_val*opt.alpha
-                dloss_data = []
-                optimizer_G.zero_grad() 
-                losses_G.backward()
-                optimizer_G.step()
-                optimizer_D.zero_grad()
-                losses_D.backward()
-                optimizer_D.step()    
-                losses_G = 0    
-                losses_D = 0
-        else:
-            optimizer_G.zero_grad() 
-            losses_G.backward()
-            optimizer_G.step()
-            optimizer_D.zero_grad()
-            losses_D.backward()
-            optimizer_D.step()    
-            losses_G = 0    
-            losses_D = 0
+        optimizer_G.zero_grad() 
+        loss_G.backward()
+        optimizer_G.step()
+        optimizer_D.zero_grad()
+        loss_D.backward()
+        optimizer_D.step()    
+        losses_G = 0    
+        losses_D = 0
 
         # tracking metrics with AIM
         run.track(loss_D.detach(), name = 'Disriminator loss')
@@ -301,13 +284,12 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
             gen1 = Image(util.tensor2im(generated.data[0]))
             real1 = Image(util.tensor2im(data['image'][0]))
             inp1 = Image(util.tensor2im(data['label'][0]))
-            
-
+            t1 = Image(util.tensor2im(teacher_image[0]))
 
             run.track(gen1, name = 'generated image')
             run.track(real1, name = 'real image')
             run.track(inp1, name = 'input image')
-
+            run.track(t1, name = 'teacher image')
 
     # end of epoch 
     iter_end_time = time.time()
@@ -319,24 +301,29 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
     if epoch % opt.save_epoch_freq == 0:
         if epoch % 5 == 0:
             print('saving the model at the end of epoch %d, iters %d' % (epoch, total_steps))        
-            torch.save(model.module.optimizer_G.state_dict(), f'checkpoints/{opt.name}/epoch_{epoch}_optim-0.pth')
-            torch.save(model.module.optimizer_D.state_dict(), f'checkpoints/{opt.name}/epoch_{epoch}_optim-1.pth')
-            torch.save(model.module.netG.state_dict(), f'checkpoints/{opt.name}/epoch_{epoch}_netG.pth')
-            torch.save(model.module.netD.state_dict(), f'checkpoints/{opt.name}/epoch_{epoch}netD.pth')
+            # torch.save(model.module.optimizer_G.state_dict(), f'checkpoints/{opt.name}/epoch_{epoch}_optim-0.pth')
+            # torch.save(model.module.optimizer_D.state_dict(), f'checkpoints/{opt.name}/epoch_{epoch}_optim-1.pth')
+            # torch.save(model.module.netG.state_dict(), f'checkpoints/{opt.name}/epoch_{epoch}_netG.pth')
+            # torch.save(model.module.netD.state_dict(), f'checkpoints/{opt.name}/epoch_{epoch}netD.pth')
 
         os.makedirs('fake', exist_ok=True)
         os.makedirs('real', exist_ok=True)
         # os.makedirs(f'fake/{epoch}', exist_ok=True)
         # os.makedirs(f'real/{epoch}', exist_ok=True)
-        for i, data in enumerate(test_dataset):   
+        model = model.eval()
+        for i, data in tqdm(enumerate(test_dataset)):   
+            if i > 2000:
+                break
             ############## Forward Pass ######################
             with torch.no_grad():
                 losses, generated = model.forward(Variable(data['label']), Variable(data['inst']), 
                     Variable(data['image']), Variable(data['feat']),infer=True)
                 gen1 = (util.tensor2im(generated.data[0]))
                 real1 = (util.tensor2im(data['image'][0]))
-                cv2.imwrite(f'fake/{i}.png', gen1)
-                cv2.imwrite(f'real/{i}.png', real1)
+                cv2.imwrite(f'fake/{i}.png', gen1[:,:,::-1])
+                cv2.imwrite(f'real/{i}.png', real1[:,:,::-1])
+
+
 
         del gen1
         del real1
