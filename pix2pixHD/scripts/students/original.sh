@@ -1,0 +1,1 @@
+python train.py --name og1 --resume_distill_epoch 200 --config_path /home/ubuntu/transformer-distillation/configs/hdit_shifted_window.json --experiment_name og1 --save_epoch_freq 1 --niter 100 --niter_decay 100 --dataroot "input_rotation_1024" --batchSize 1 --label_nc 0 --no_instance --gpu_ids 0 --loadSize 1024

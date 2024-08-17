@@ -1,0 +1,1 @@
+python train.py --name naive-width1 --config_path /home/ubuntu/transformer-distillation/configs/hdit-shifted-windows/width1.json --experiment_name naive-width1 --alpha 100.0 --niter 100 --niter_decay 100 --save_epoch_freq 5  --dataroot "../../images" --batchSize 4 --label_nc 0 --no_instance --gpu_ids 0 --loadSize 1024

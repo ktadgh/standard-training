@@ -1,0 +1,1 @@
+python train.py --name naive-head1 --config_path /home/ubuntu/transformer-distillation/configs/hdit-shifted-windows/head1.json --experiment_name naive-head1 --save_epoch_freq 5 --alpha 100.0 --niter 100 --niter_decay 100 --dataroot "../../images" --batchSize 4 --label_nc 0 --no_instance --gpu_ids 0 --loadSize 1024
