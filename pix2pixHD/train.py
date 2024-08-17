@@ -207,9 +207,9 @@ else:
 
 # loading the teacher... 
 teacher_opt = opt
-teacher_opt.config_path = '/home/ubuntu/transformer-distillation/configs/hdit_shifted_window.json'
+teacher_opt.config_path = '../k-diffusion-onnx/configs/config_oxford_flowers_shifted_window.json'
 teacher_model = create_model(teacher_opt)
-teacher_checkpoint = torch.load('/home/ubuntu/transformer-distillation/pix2pixHD/checkpoints/og1/epoch_200_netG.pth')
+teacher_checkpoint = torch.load('/home/ubuntu/transformer-distillation/pix2pixHD/checkpoints/oxflow-teacher/epoch_200_netG.pth')
 teacher_model.module.netG.load_state_dict(teacher_checkpoint, strict = False)
 teacher_model.eval()
 
