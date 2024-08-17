@@ -188,11 +188,11 @@ class GlobalGenerator(nn.Module):
         if teacher == False:
             config = K.config.load_config(config_path)
         else:
-            config = K.config.load_config('/home/ubuntu/transformer-distillation/k-diffusion-onnx/configs/hdit.json')
+            config = K.config.load_config('/home/tadgh720x/Documents/distillation/transformer-distillation/configs/small-swin-students/config_oxford_flowers_shifted_window.json')
         self.model = K.config.make_model(config).cuda()
 
         self.final_activation_function = nn.Tanh()
-        self.projector = torch.nn.utils.parametrizations.orthogonal(nn.Linear(64, 128, bias=False))
+        self.projector = nn.Linear(1024, 1024, bias=False)
 
     def forward(self, input):
         cst = torch.ones((input.shape[0]), device=input.device)
@@ -472,37 +472,58 @@ class Whitening2d(nn.Module):
 
 
 class DistillLoss(torch.nn.Module):
-    def __init__(self, teacher, student,batch_size=3):
+    def __init__(self, teacher, student,batch_size=1):
         super().__init__()
         self.teacher = teacher.cuda()
         self.student = student.cuda()
-        self.batch_size = batch_size
         self.whitener = Whitening2d(batch_size, eps = 1).cuda()
 
-    def forward(self,x,run):
-        assert len(x)==self.batch_size, 'batch size is incorrect'
+    def forward(self,x,run, whitening=True):
         sxs = []
         txs = []
 
-        for i in range(self.batch_size):
-            x_i = x[i].unsqueeze(0)
-            print(f'i = {i}')
-            _ = self.student.netG(x_i.cuda())
-            sx = self.student.netG.projector(self.student.netG.model.patches_for_distillation.mean(dim=(1,2)))
-            sxs.append(sx)
+        _ = self.student.netG(x.cuda())
+        sxs = self.student.netG.projector(self.student.netG.model.patches_for_distillation.mean(dim=(1,2)))
 
         with torch.no_grad():
-            for i in range(self.batch_size):
-                _ = self.teacher.netG(x_i.cuda())
-                tx = self.teacher.netG.model.patches_for_distillation.detach().mean(dim=(1,2))
-                txs.append(tx)
-        
-            txs = torch.cat(txs, dim=0)
-            sqrt_n = torch.sqrt(torch.tensor(txs.shape[0]-1, dtype=torch.float64))
-            wt = self.whitener(txs.T).T/sqrt_n
+            _ = self.teacher.netG(x.cuda())
+            txs = self.teacher.netG.model.patches_for_distillation.detach().mean(dim=(1,2))
 
-    
-        sxs = torch.cat(sxs, dim=0)
+            sqrt_n = torch.sqrt(torch.tensor(txs.shape[0]-1, dtype=torch.float64))
+            if whitening==True:
+                wt = self.whitener(txs.T).T/sqrt_n
+            else:
+                wt = txs
 
         loss = torch.norm(torch.abs(sxs-wt), p='fro')**2
         return loss
+
+
+class DistillLossNoPool(torch.nn.Module):
+    def __init__(self, teacher, student, batch_size =1):
+        super().__init__()
+        self.teacher = teacher.cuda()
+        self.student = student.cuda()
+        self.whitener = Whitening2d(batch_size, eps = 1).cuda()
+
+    def forward(self,x,run, whitening=True):
+        sxs = []
+        txs = []
+
+
+        _ = self.student.netG(x.cuda())
+        sxs = self.student.netG.projector(self.student.netG.model.patches_for_distillation)
+
+        with torch.no_grad():
+            _ = self.teacher.netG(x.cuda())
+            txs = self.teacher.netG.model.patches_for_distillation.detach()
+            sqrt_n = torch.sqrt(torch.tensor(txs.shape[0]-1, dtype=torch.float64))
+            if whitening==True:
+                wt = self.whitener(txs.T).T/sqrt_n
+            else:
+                wt = txs
+
+        loss = torch.norm(torch.abs(sxs-wt), p='fro')**2
+        return loss
+
+

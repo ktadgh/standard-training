@@ -163,7 +163,7 @@ test_opt.no_flip=True
 test_opt.resize_or_crop = ''
 test_opt.batchSize =1
 test_opt.serial_batches = True
-test_opt.phase = 'test'
+test_opt.phase = 'val'
 
 test_opt.use_encoded_image = True
 test_data_loader = CreateDataLoader(test_opt)
@@ -210,7 +210,7 @@ teacher_opt = opt
 teacher_opt.config_path = '/home/ubuntu/transformer-distillation/configs/hdit_shifted_window.json'
 teacher_model = create_model(teacher_opt)
 teacher_checkpoint = torch.load('/home/ubuntu/transformer-distillation/pix2pixHD/checkpoints/og1/epoch_200_netG.pth')
-teacher_model.module.netG.load_state_dict(teacher_checkpoint, strict = True)
+teacher_model.module.netG.load_state_dict(teacher_checkpoint, strict = False)
 teacher_model.eval()
 
 dloss = DistillLoss(teacher_model.module, model.module)
@@ -220,9 +220,9 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
         epoch_iter = epoch_iter % dataset_size
     losses_G= 0
     losses_D= 0
-    dloss_data = []
+
     for i, data in enumerate(dataset, start=epoch_iter):
-        break
+
         if total_steps % opt.print_freq == print_delta:
             iter_start_time = time.time()
         total_steps += opt.batchSize
@@ -249,8 +249,11 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
         # calculate final loss scalar
         loss_D = (loss_dict['D_fake'] + loss_dict['D_real']) * 0.5
         loss_G = loss_dict['G_GAN'] + loss_dict.get('G_GAN_Feat',0) + loss_dict.get('G_VGG',0)
+        distloss = dloss(data['label'], run, whitening= False)
+        loss_G += opt.alpha * distloss
 
-        optimizer_G.zero_grad() 
+        run.track(opt.alpha*distloss.item(), name = 'Distillation Loss')
+        optimizer_G.zero_grad()
         loss_G.backward()
         optimizer_G.step()
         optimizer_D.zero_grad()
@@ -328,6 +331,8 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
         del gen1
         del real1
 
+
+        
         torch.cuda.empty_cache()
         fid = dir_fid(f'fake', f'real')
         lpipzz = dir_lpips(f'fake', f'real')
