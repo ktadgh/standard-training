@@ -160,7 +160,8 @@ sys.argv = filtered_args
 
 test_opt = TestOptions().parse(save=False)
 test_opt.no_flip=True
-test_opt.resize_or_crop = ''
+test_opt.loadSize = 256
+test_opt.fineSize = 256
 test_opt.batchSize =1
 test_opt.serial_batches = True
 test_opt.phase = 'val'
@@ -222,7 +223,6 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
     losses_D= 0
 
     for i, data in enumerate(dataset, start=epoch_iter):
-
         if total_steps % opt.print_freq == print_delta:
             iter_start_time = time.time()
         total_steps += opt.batchSize
@@ -304,10 +304,10 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
     if epoch % opt.save_epoch_freq == 0:
         if epoch % 5 == 0:
             print('saving the model at the end of epoch %d, iters %d' % (epoch, total_steps))        
-            # torch.save(model.module.optimizer_G.state_dict(), f'checkpoints/{opt.name}/epoch_{epoch}_optim-0.pth')
-            # torch.save(model.module.optimizer_D.state_dict(), f'checkpoints/{opt.name}/epoch_{epoch}_optim-1.pth')
-            # torch.save(model.module.netG.state_dict(), f'checkpoints/{opt.name}/epoch_{epoch}_netG.pth')
-            # torch.save(model.module.netD.state_dict(), f'checkpoints/{opt.name}/epoch_{epoch}netD.pth')
+            torch.save(model.module.optimizer_G.state_dict(), f'checkpoints/{opt.name}/epoch_{epoch}_optim-0.pth')
+            torch.save(model.module.optimizer_D.state_dict(), f'checkpoints/{opt.name}/epoch_{epoch}_optim-1.pth')
+            torch.save(model.module.netG.state_dict(), f'checkpoints/{opt.name}/epoch_{epoch}_netG.pth')
+            torch.save(model.module.netD.state_dict(), f'checkpoints/{opt.name}/epoch_{epoch}netD.pth')
 
         os.makedirs('fake', exist_ok=True)
         os.makedirs('real', exist_ok=True)

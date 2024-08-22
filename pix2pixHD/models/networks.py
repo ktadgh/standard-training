@@ -192,7 +192,7 @@ class GlobalGenerator(nn.Module):
         self.model = K.config.make_model(config).cuda()
 
         self.final_activation_function = nn.Tanh()
-        self.projector = nn.Linear(1024, 1024, bias=False)
+        self.projector = nn.Linear(64, 128, bias=False)
 
     def forward(self, input):
         cst = torch.ones((input.shape[0]), device=input.device)
