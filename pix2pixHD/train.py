@@ -152,7 +152,7 @@ for i, arg in enumerate(sys.argv):
         skip_next = True  # Skip the next value since it's part of the key-value pair to remove
     else:
         print(f'arg added = {arg}')
-        if arg != 'resume_distill_epoch':
+        if arg not in ['--resume_distill_epoch', '--teacher_adv', '--teacher_feat', '--teacher_vgg']:
             filtered_args.append(arg)
 
 sys.argv = filtered_args
@@ -210,7 +210,7 @@ else:
 teacher_opt = opt
 teacher_opt.config_path = '../k-diffusion-onnx/configs/config_oxford_flowers_shifted_window.json'
 teacher_model = create_model(teacher_opt)
-teacher_checkpoint = torch.load('/home/ubuntu/transformer-distillation/pix2pixHD/checkpoints/oxflow-teacher/epoch_200_netG.pth')
+teacher_checkpoint = torch.load('/home/tadgh720x/Documents/distillation/transformer-distillation/oxflow-teacher-200.pth')
 teacher_model.module.netG.load_state_dict(teacher_checkpoint, strict = False)
 teacher_model.eval()
 
@@ -237,10 +237,12 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
         ############## Forward Pass ######################
         if i == 0:
             losses, generated = model.forward(Variable(data['label']), Variable(data['inst']), 
-                Variable(teacher_image), Variable(data['feat']),infer=True)
+                Variable(data['image']),Variable(teacher_image), Variable(data['feat']),infer=True, teacher_adv = opt.teacher_adv,
+                teacher_feat = opt.teacher_feat,teacher_vgg = opt.teacher_vgg)
         else:
             losses, generated = model.forward(Variable(data['label']), Variable(data['inst']), 
-                Variable(teacher_image), Variable(data['feat']),infer=False)       
+                Variable(data['image']), Variable(teacher_image), Variable(data['feat']),infer=False, teacher_adv = opt.teacher_adv,
+                teacher_feat = opt.teacher_feat,teacher_vgg = opt.teacher_vgg)       
 
         # sum per device losses
         losses = [ torch.mean(x) if not isinstance(x, int) else x for x in losses ]

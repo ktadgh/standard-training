@@ -149,10 +149,14 @@ class Pix2PixHDModel(BaseModel):
         else:
             return self.netD.forward(input_concat)
 
-    def forward(self, label, inst, image, feat, infer=False):
+    def forward(self, label, inst, image,teacher_image, feat, infer=False, teacher_adv=False, teacher_feat=False, teacher_vgg=False):
         # Encode Inputs
         input_label, inst_map, real_image, feat_map = self.encode_input(label, inst, image, feat)  
+        input_label_t, inst_map_t, teacher_image, feat_map_t = self.encode_input(label, inst, teacher_image, feat)  
 
+        if not (input_label_t == input_label).all():
+            raise ValueError()
+        
         # Fake Generation
         if self.use_features:
             if not self.opt.load_features:
@@ -160,20 +164,35 @@ class Pix2PixHDModel(BaseModel):
             input_concat = torch.cat((input_label, feat_map), dim=1)                        
         else:
             input_concat = input_label
+            
         fake_image = self.netG.forward(input_concat)
 
         # Fake Detection and Loss
         pred_fake_pool = self.discriminate(input_label, fake_image, use_pool=True)
-        loss_D_fake = self.criterionGAN(pred_fake_pool, False)        
+        loss_D_fake = self.criterionGAN(pred_fake_pool, False)
 
-        # Real Detection and Loss        
-        pred_real = self.discriminate(input_label, real_image)
+        # Real Detection and Loss
+        if not teacher_adv:        
+            pred_real = self.discriminate(input_label, real_image)
+
+        else:
+            pred_real = self.discriminate(input_label_t, teacher_image)
         loss_D_real = self.criterionGAN(pred_real, True)
+
+
 
         # GAN loss (Fake Passability Loss)        
         pred_fake = self.netD.forward(torch.cat((input_label, fake_image), dim=1))        
         loss_G_GAN = self.criterionGAN(pred_fake, True)               
         
+
+        if teacher_adv != teacher_feat:  # we only need to recalculate if we are using a different image
+            if not teacher_feat:        
+                pred_real = self.discriminate(input_label, real_image)
+
+            else:
+                pred_real = self.discriminate(input_label, teacher_image)\
+
         # GAN feature matching loss
         loss_G_GAN_Feat = 0
         if not self.opt.no_ganFeat_loss:
@@ -185,10 +204,15 @@ class Pix2PixHDModel(BaseModel):
                         self.criterionFeat(pred_fake[i][j], pred_real[i][j].detach()) * self.opt.lambda_feat
                    
         # VGG feature matching loss
-        loss_G_VGG = 0
-        if not self.opt.no_vgg_loss:
-            loss_G_VGG = self.criterionVGG(fake_image, real_image) * self.opt.lambda_feat
-        
+        if not teacher_vgg:
+            loss_G_VGG = 0
+            if not self.opt.no_vgg_loss:
+                loss_G_VGG = self.criterionVGG(fake_image, real_image) * self.opt.lambda_feat
+        else:
+            loss_G_VGG = 0
+            if not self.opt.no_vgg_loss:
+                loss_G_VGG = self.criterionVGG(fake_image, teacher_image) * self.opt.lambda_feat
+
         # Only return the fake_B image if necessary to save BW
         return [ self.loss_filter( loss_G_GAN, loss_G_GAN_Feat, loss_G_VGG, loss_D_real, loss_D_fake ), None if not infer else fake_image ]
 
