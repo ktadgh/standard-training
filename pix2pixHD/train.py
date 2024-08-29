@@ -210,7 +210,7 @@ else:
 teacher_opt = opt
 teacher_opt.config_path = '../k-diffusion-onnx/configs/config_oxford_flowers_shifted_window.json'
 teacher_model = create_model(teacher_opt)
-teacher_checkpoint = torch.load('/home/tadgh720x/Documents/distillation/transformer-distillation/oxflow-teacher-200.pth')
+teacher_checkpoint = torch.load('/home/ubuntu/transformer-distillation/pix2pixHD/checkpoints/oxflow-teacher/epoch_200_netG.pth')
 teacher_model.module.netG.load_state_dict(teacher_checkpoint, strict = False)
 teacher_model.eval()
 
@@ -322,7 +322,7 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
             ############## Forward Pass ######################
             with torch.no_grad():
                 losses, generated = model.forward(Variable(data['label']), Variable(data['inst']), 
-                    Variable(data['image']), Variable(data['feat']),infer=True)
+                    Variable(data['image']), Variable(data['image']), Variable(data['feat']),infer=True)
                 gen1 = (util.tensor2im(generated.data[0]))
                 real1 = (util.tensor2im(data['image'][0]))
                 cv2.imwrite(f'fake/{i}.png', gen1[:,:,::-1])

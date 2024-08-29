@@ -782,13 +782,14 @@ class ImageTransformerDenoiserModelV2(nn.Module):
         
 
         x = self.mid_level(x, pos, cond)
+        self.patches_for_distillation = x
         for up_level, split, skip, pos in reversed(list(zip(self.up_levels, self.splits, skips, poses))):
             x = split(x, skip)
             x = up_level(x, pos, cond)
 
         # Unpatching
         x = self.out_norm(x)
-        self.patches_for_distillation = x
+        
         x = self.patch_out(x)
         x = x.permute(0,3, 1,2)
 
