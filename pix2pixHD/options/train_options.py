@@ -34,4 +34,9 @@ class TrainOptions(BaseOptions):
         self.parser.add_argument('--resume_distill_epoch', type=int, default=0, help='epoch to resume from')
         self.parser.add_argument('--alpha', type=float, default=0, help='distillation loss weight')
 
+
+        self.parser.add_argument('--teacher_adv', action='store_true')
+        self.parser.add_argument('--teacher_feat', action='store_true')
+        self.parser.add_argument('--teacher_vgg',action='store_true')
+
         self.isTrain = True
