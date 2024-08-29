@@ -192,7 +192,22 @@ class GlobalGenerator(nn.Module):
         self.model = K.config.make_model(config).cuda()
 
         self.final_activation_function = nn.Tanh()
+<<<<<<< Updated upstream
         self.projector = nn.Linear(256, 512, bias=False)
+=======
+        self.projector1 = nn.Linear(256, 512, bias=False)
+        self.projector2 = nn.Linear(256, 512, bias=False)
+        self.projector3 = nn.Linear(256, 512, bias=False)
+        self.projector4 = nn.Linear(64, 128, bias=False)
+        self.projector5 = nn.Linear(64, 128, bias=False)
+
+        self.alpha1 = nn.Parameter(torch.tensor([1.]))
+        self.alpha2 = nn.Parameter(torch.tensor([1.]))
+        self.alpha3 = nn.Parameter(torch.tensor([1.]))
+        self.alpha4 = nn.Parameter(torch.tensor([1.]))
+        self.alpha5 = nn.Parameter(torch.tensor([1.]))
+        self.alpha_sum = nn.Parameter(torch.tensor([5.]))
+>>>>>>> Stashed changes
 
     def forward(self, input):
         cst = torch.ones((input.shape[0]), device=input.device)
@@ -472,28 +487,39 @@ class Whitening2d(nn.Module):
 
 
 class DistillLoss(torch.nn.Module):
-    def __init__(self, teacher, student,batch_size=1):
+    def __init__(self, teacher, student,batch_size=1, layer = 5):
         super().__init__()
         self.teacher = teacher.cuda()
         self.student = student.cuda()
         self.whitener = Whitening2d(batch_size, eps = 1).cuda()
+        self.layer = layer
 
     def forward(self,x,run, whitening=True):
         sxs = []
         txs = []
-
         _ = self.student.netG(x.cuda())
-        sxs = self.student.netG.projector(self.student.netG.model.patches_for_distillation.mean(dim=(1,2)))
 
         with torch.no_grad():
             _ = self.teacher.netG(x.cuda())
-            txs = self.teacher.netG.model.patches_for_distillation.detach().mean(dim=(1,2))
 
-            sqrt_n = torch.sqrt(torch.tensor(txs.shape[0]-1, dtype=torch.float64))
-            if whitening==True:
-                wt = self.whitener(txs.T).T/sqrt_n
-            else:
-                wt = txs
+        projectors = [self.student.netG.projector1,self.student.netG.projector2,self.student.netG.projector3,self.student.netG.projector4,self.student.netG.projector5]
+        student_patches = [self.student.netG.model.patches_for_distillation1,self.student.netG.model.patches_for_distillation2,
+                           self.student.netG.model.patches_for_distillation3, self.student.netG.model.patches_for_distillation4,
+                           self.student.netG.model.patches_for_distillation5]
+        
+        teacher_patches = [self.teacher.netG.model.patches_for_distillation1,self.teacher.netG.model.patches_for_distillation2,
+                           self.teacher.netG.model.patches_for_distillation3, self.teacher.netG.model.patches_for_distillation4,
+                           self.teacher.netG.model.patches_for_distillation5]
+
+        layer_index = self.layer-1
+        sxs = projectors[layer_index](student_patches[layer_index].mean(dim=(1,2)))
+        txs = teacher_patches[layer_index].mean(dim=(1,2))
+        
+        sqrt_n = torch.sqrt(torch.tensor(txs.shape[0]-1, dtype=torch.float64))
+        if whitening==True:
+            wt = self.whitener(txs.T).T/sqrt_n
+        else:
+            wt = txs
 
         loss = torch.norm(torch.abs(sxs-wt), p='fro')**2
         return loss

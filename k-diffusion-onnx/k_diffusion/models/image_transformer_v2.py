@@ -707,7 +707,13 @@ class ImageTransformerDenoiserModelV2(nn.Module):
         self.class_emb = nn.Embedding(num_classes, mapping.width) if num_classes else None
         self.mapping_cond_in_proj = Linear(mapping_cond_dim, mapping.width, bias=False) if mapping_cond_dim else None
         self.mapping = tag_module(MappingNetwork(mapping.depth, mapping.width, mapping.d_ff, dropout=mapping.dropout), "mapping")
-        self.patches_for_distillation = 0
+
+        self.patches_for_distillation1 = 0
+        self.patches_for_distillation2 = 0
+        self.patches_for_distillation3 = 0
+        self.patches_for_distillation4 = 0
+        self.patches_for_distillation5 = 0
+
         self.down_levels, self.up_levels = nn.ModuleList(), nn.ModuleList()
         for i, spec in enumerate(levels):
             
@@ -772,24 +778,45 @@ class ImageTransformerDenoiserModelV2(nn.Module):
 
         # Hourglass transformer
         skips, poses = [], []
+        distill_at = self.down_levels[len(self.merges)//2]
+
         for down_level, merge in zip(self.down_levels, self.merges):
             x = down_level(x, pos, cond)
             skips.append(x)
             poses.append(pos)
             x = merge(x)
             pos = downscale_pos(pos)
+            if distill_at == down_level:
+                self.patches_for_distillation1 = x
 
-        
+        self.patches_for_distillation2 = x
 
         x = self.mid_level(x, pos, cond)
+<<<<<<< Updated upstream
         self.patches_for_distillation = x
+=======
+
+        self.patches_for_distillation3 = x
+
+
+        distill_at = self.down_levels[len(self.splits)//2]
+
+>>>>>>> Stashed changes
         for up_level, split, skip, pos in reversed(list(zip(self.up_levels, self.splits, skips, poses))):
             x = split(x, skip)
             x = up_level(x, pos, cond)
+            if distill_at == down_level:
+                self.patches_for_distillation4 = x
 
         # Unpatching
         x = self.out_norm(x)
+<<<<<<< Updated upstream
         
+=======
+        self.patches_for_distillation5 = x
+        # raise ValueError(self.patches_for_distillation5.shape, self.patches_for_distillation4.shape,self.patches_for_distillation3.shape,
+        #                  self.patches_for_distillation2.shape, self.patches_for_distillation1.shape)
+>>>>>>> Stashed changes
         x = self.patch_out(x)
         x = x.permute(0,3, 1,2)
 

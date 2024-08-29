@@ -141,18 +141,22 @@ for i, arg in enumerate(sys.argv):
     if skip_next:
         skip_next = False
         continue
-    if i + 1 < len(sys.argv):
-        print(arg,sys.argv[i + 1])
-    for key, value in args_to_remove:
-        if key==arg:
-            print(value, sys.argv[i+1], sys.argv[i+1]==value)
+    # if i + 1 < len(sys.argv):
+    #     print(arg,sys.argv[i + 1])
+    # for key, value in args_to_remove:
+    #     if key==arg:
+    #         print(value, sys.argv[i+1], sys.argv[i+1]==value)
     # print([f'\n key = {key}' for key, v in args_to_remove])
 
     if any(arg == key and (i + 1 < len(sys.argv) and sys.argv[i + 1] == value) for key, value in args_to_remove):
         skip_next = True  # Skip the next value since it's part of the key-value pair to remove
     else:
         print(f'arg added = {arg}')
+<<<<<<< Updated upstream
         if arg not in ['--resume_distill_epoch', '--teacher_adv', '--teacher_feat', '--teacher_vgg']:
+=======
+        if arg != 'resume_distill_epoch' and arg != '--learn_weights':
+>>>>>>> Stashed changes
             filtered_args.append(arg)
 
 sys.argv = filtered_args
@@ -214,7 +218,12 @@ teacher_checkpoint = torch.load('/home/ubuntu/transformer-distillation/pix2pixHD
 teacher_model.module.netG.load_state_dict(teacher_checkpoint, strict = False)
 teacher_model.eval()
 
-dloss = DistillLoss(teacher_model.module, model.module)
+dloss1 = DistillLoss(teacher_model.module, model.module, layer=1)
+dloss2 = DistillLoss(teacher_model.module, model.module, layer=2)
+dloss3 = DistillLoss(teacher_model.module, model.module, layer=3)
+dloss4 = DistillLoss(teacher_model.module, model.module, layer=4)
+dloss5 = DistillLoss(teacher_model.module, model.module, layer=5)
+
 for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
     epoch_start_time = time.time()
     if epoch != start_epoch:
@@ -251,10 +260,22 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
         # calculate final loss scalar
         loss_D = (loss_dict['D_fake'] + loss_dict['D_real']) * 0.5
         loss_G = loss_dict['G_GAN'] + loss_dict.get('G_GAN_Feat',0) + loss_dict.get('G_VGG',0)
-        distloss = dloss(data['label'], run, whitening= False)
-        loss_G += opt.alpha * distloss
+        distloss = 0
+        if not opt.learn_weights:
+            distloss = dloss1(data['label'], run, whitening= False) + dloss2(data['label'], run, whitening= False) + dloss3(data['label'], run, whitening= False)
+            + dloss4(data['label'], run, whitening= False) + dloss5(data['label'], run, whitening= False)
+            # sum = (model.module.netG.alpha1+model.module.netG.alpha2+model.module.netG.alpha3+model.module.netG.alpha4+model.module.netG.alpha5)
+            loss_G += ( distloss.squeeze() )* opt.alpha
 
-        run.track(opt.alpha*distloss.item(), name = 'Distillation Loss')
+        else:
+            distloss = torch.nn.functional.sigmoid(model.module.netG.alpha1) * dloss1(data['label'], run, whitening= False) + torch.nn.functional.sigmoid(model.module.netG.alpha2) * dloss2(data['label'], run, whitening= False) + torch.nn.functional.sigmoid(model.module.netG.alpha3) * dloss3(data['label'], run, whitening= False) + torch.nn.functional.sigmoid(model.module.netG.alpha4) * dloss4(data['label'], run, whitening= False) + torch.nn.functional.sigmoid(model.module.netG.alpha5) * dloss5(data['label'], run, whitening= False) 
+        
+            sum = torch.nn.functional.sigmoid(model.module.netG.alpha1) + torch.nn.functional.sigmoid(model.module.netG.alpha2) + torch.nn.functional.sigmoid(model.module.netG.alpha3) + torch.nn.functional.sigmoid(model.module.netG.alpha4) + torch.nn.functional.sigmoid(model.module.netG.alpha5)
+            loss_G += ( distloss.squeeze()/sum.squeeze() )* opt.alpha
+
+        # run.track(opt.alpha*distloss.item(), name = 'Distillation Loss')
+
+
         optimizer_G.zero_grad()
         loss_G.backward()
         optimizer_G.step()
@@ -263,6 +284,12 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
         optimizer_D.step()    
         losses_G = 0    
         losses_D = 0
+
+        run.track(model.module.netG.alpha1, name = 'alpha1')
+        run.track(model.module.netG.alpha2, name = 'alpha2')
+        run.track(model.module.netG.alpha3, name = 'alpha3')
+        run.track(model.module.netG.alpha4, name = 'alpha4')
+        run.track(model.module.netG.alpha5, name = 'alpha5')
 
         # tracking metrics with AIM
         run.track(loss_D.detach(), name = 'Disriminator loss')
