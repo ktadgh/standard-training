@@ -51,6 +51,28 @@ def dir_psnr(A, B):
         psnr.reset()
     return np.array(psnrs).mean()
 
+def dir_tpsnr(A, B):
+    psnr = PeakSignalNoiseRatio(data_range =1.)
+    psnrs = []
+    a_sorted = sorted(os.listdir(A))
+    b_sorted = sorted(os.listdir(B))
+    assert  a_sorted == b_sorted, "directory files are not identical"
+    for i in tqdm(range(1,len(a_sorted))):
+
+        a_img = torchvision.io.read_image(A + '/' + a_sorted[i]).cuda()/255.0
+        old_a_img = torchvision.io.read_image(A + '/' + a_sorted[i-1]).cuda()/255.0
+        b_img = torchvision.io.read_image(B + '/' + b_sorted[i]).cuda()/255.0
+        old_b_img = torchvision.io.read_image(B + '/' + b_sorted[i-1]).cuda()/255.0
+
+        psnr.update(a_img- old_a_img, b_img-old_b_img)
+
+        item = psnr.compute()
+        psnrs.append(item.cpu())
+        psnr.reset()
+
+    return np.array(psnrs).mean()
+
+
 
 def dir_lpips(A, B):
     loss_fn_alex = lpips.LPIPS(net='alex').cuda() # best forward scores
@@ -394,7 +416,10 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
         fid = dir_fid(f'fake/{opt.experiment_name}', f'real/{opt.experiment_name}')
         lpipzz = dir_lpips(f'fake/{opt.experiment_name}', f'real/{opt.experiment_name}')
         psnr = dir_psnr(f'fake/{opt.experiment_name}', f'real/{opt.experiment_name}')
+        tpsnr = dir_tpsnr(f'fake/{opt.experiment_name}', f'real/{opt.experiment_name}')
+        
         run.track(psnr, name='PSNR')
+        run.track(tpsnr, name='tPSNR')
         run.track(fid, name = 'FID')
         run.track(lpipzz, name = 'LPIPS')
 
