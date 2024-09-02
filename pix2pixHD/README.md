@@ -1,6 +1,17 @@
 <img src='imgs/teaser_720.gif' align="right" width=360>
 
 <br><br><br><br>
+# Experiment tracking
+Add a flag of `--aim_repo 1024-pix2pixHD-runs` or `--aim_repo 256-pix2pixHD-runs` to describe which aim repo to track the run in. Once gsutil is installed create matching directories on the cloud, and add the following to crontab in order to periodically sync with the cloud:
+```
+* * * * * gsutil rsync -r gs://aim-runs/1024-pix2pixHD-runs /home/ubuntu/1024-pix2pixHD-runs
+* * * * * gsutil rsync -r gs://aim-runs/256-pix2pixHD-runs /home/ubuntu/256-pix2pixHD-runs
+* * * * * gsutil rsync -r /home/ubuntu/1024-pix2pixHD-runs gs://aim-runs/1024-pix2pixHD-runs
+* * * * * gsutil rsync -r /home/ubuntu/256-pix2pixHD-runs gs://aim-runs/256-pix2pixHD-runs
+```
+
+then these folders should be easily accessible from any machine with the cron job running, or from google colab.
+
 
 # pix2pixHD
 ### [Project](https://tcwang0509.github.io/pix2pixHD/) | [Youtube](https://youtu.be/3AIpPlzM_qs) | [Paper](https://arxiv.org/pdf/1711.11585.pdf) <br>
