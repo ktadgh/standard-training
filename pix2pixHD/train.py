@@ -318,11 +318,6 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
         losses_G = 0    
         losses_D = 0
 
-        # tracking metrics with AIM
-        run.track(loss_D.detach(), name = 'Disriminator loss')
-        run.track(loss_dict['G_GAN'].detach(), name = 'GAN loss (default is hinge)')
-        run.track(loss_dict.get('G_GAN_Feat',0).detach(), name = 'Feature Loss')
-        run.track(loss_dict.get('G_VGG',0).detach(), name = 'VGG loss')
 
         ############### Backward Pass ####################
         # update generator weights
@@ -349,6 +344,12 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
             run.track(real1, name = 'real image')
             run.track(inp1, name = 'input image')
             run.track(t1, name = 'teacher image')
+
+            # tracking metrics with AIM
+            run.track(loss_D.detach(), name = 'Disriminator loss')
+            run.track(loss_dict['G_GAN'].detach(), name = 'GAN loss (default is hinge)')
+            run.track(loss_dict.get('G_GAN_Feat',0).detach(), name = 'Feature Loss')
+            run.track(loss_dict.get('G_VGG',0).detach(), name = 'VGG loss')
 
     # end of epoch 
     iter_end_time = time.time()
