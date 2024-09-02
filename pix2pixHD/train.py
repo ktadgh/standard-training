@@ -318,12 +318,6 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
         losses_G = 0    
         losses_D = 0
 
-        run.track(model.module.netG.alpha1, name = 'alpha1')
-        run.track(model.module.netG.alpha2, name = 'alpha2')
-        run.track(model.module.netG.alpha3, name = 'alpha3')
-        run.track(model.module.netG.alpha4, name = 'alpha4')
-        run.track(model.module.netG.alpha5, name = 'alpha5')
-
         # tracking metrics with AIM
         run.track(loss_D.detach(), name = 'Disriminator loss')
         run.track(loss_dict['G_GAN'].detach(), name = 'GAN loss (default is hinge)')
