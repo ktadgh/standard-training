@@ -77,11 +77,6 @@ def dir_fid(A,B):
 opt = TrainOptions().parse()
 # os.environ["CUDA_VISIBLE_DEVICES"] = opt.gpu_idss
 
-run = Run(
-    repo='runs',
-    experiment=opt.experiment_name,
-    log_system_params =True
-)
 
 iter_path = os.path.join(opt.checkpoints_dir, opt.name, 'iter.txt')
 if opt.continue_train:
@@ -125,14 +120,33 @@ import sys
 
 # Example of removing specific arguments
 args_to_remove = [
-    ('--display_freq', str(opt.display_freq)),
-    ('--experiment_name', opt.experiment_name),
-    ('--niter', str(opt.niter)),
-    ('--niter_decay', str(opt.niter_decay)),
-    ('--save_epoch_freq', str(opt.save_epoch_freq)),
-    ('--resume_distill_epoch', str(opt.resume_distill_epoch)),
-    ('--alpha', str(opt.alpha))
+
+('--display_freq', str(opt.display_freq)),
+
+('--experiment_name', opt.experiment_name),
+
+('--niter', str(opt.niter)),
+
+('--niter_decay', str(opt.niter_decay)),
+
+('--save_epoch_freq', str(opt.save_epoch_freq)),
+
+('--resume_distill_epoch', str(opt.resume_distill_epoch)),
+
+('--alpha', str(opt.alpha)),
+
+('--alpha1', str(opt.alpha1)),
+
+('--alpha2', str(opt.alpha2)),
+
+('--alpha3', str(opt.alpha3)),
+
+('--alpha4', str(opt.alpha4)),
+
+('--alpha5', str(opt.alpha5)),
+
 ]
+
 print(" args:", sys.argv)
 filtered_args = []
 skip_next = False
@@ -152,11 +166,7 @@ for i, arg in enumerate(sys.argv):
         skip_next = True  # Skip the next value since it's part of the key-value pair to remove
     else:
         print(f'arg added = {arg}')
-<<<<<<< Updated upstream
-        if arg not in ['--resume_distill_epoch', '--teacher_adv', '--teacher_feat', '--teacher_vgg']:
-=======
-        if arg != 'resume_distill_epoch' and arg != '--learn_weights':
->>>>>>> Stashed changes
+        if arg not in ['--resume_distill_epoch', '--teacher_adv', '--teacher_feat', '--teacher_vgg', '--aim_repo']:
             filtered_args.append(arg)
 
 sys.argv = filtered_args
@@ -192,6 +202,28 @@ save_delta = total_steps % opt.save_latest_freq
 
 if opt.resume_distill_epoch != 0:
     opt.resume_repo = opt.name
+
+    my_string = "Hello, PyTorch!"
+
+    # Save the string in a dictionary format
+    string = torch.load(f'checkpoints/{opt.resume_repo}/aim_strings.pth')
+    aim_id = string['aim_id']
+    repo = string['repo']
+
+    run = Run(
+        run_hash=aim_id,
+        repo=repo,
+        experiment=opt.experiment_name,
+        log_system_params =True
+    )
+
+
+    # To load the string back
+    loaded_data = torch.load('my_string.pth')
+    loaded_string = loaded_data['string_data']
+
+    print(loaded_string)  # Output: Hello, PyTorch!
+
     g_checkpoint = torch.load(f'checkpoints/{opt.resume_repo}/epoch_{opt.resume_distill_epoch}_netG.pth', map_location = 'cuda:0')
     d_checkpoint = torch.load(f'checkpoints/{opt.resume_repo}/epoch_{opt.resume_distill_epoch}netD.pth', map_location = 'cuda:0')
 
@@ -208,6 +240,16 @@ if opt.resume_distill_epoch != 0:
     new_start_epoch = opt.resume_distill_epoch
 else:
     new_start_epoch = start_epoch
+    run = Run(
+        repo=opt.aim_repo,
+        experiment=opt.experiment_name,
+        log_system_params =True
+    )
+
+
+
+strings = {'aim_id': run.hash, 'repo': opt.aim_repo}
+torch.save(strings, f'checkpoints/{opt.name}/aim_strings.pth')
 
 
 # loading the teacher... 
@@ -261,20 +303,11 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
         loss_D = (loss_dict['D_fake'] + loss_dict['D_real']) * 0.5
         loss_G = loss_dict['G_GAN'] + loss_dict.get('G_GAN_Feat',0) + loss_dict.get('G_VGG',0)
         distloss = 0
-        if not opt.learn_weights:
-            distloss = dloss1(data['label'], run, whitening= False) + dloss2(data['label'], run, whitening= False) + dloss3(data['label'], run, whitening= False)
-            + dloss4(data['label'], run, whitening= False) + dloss5(data['label'], run, whitening= False)
-            # sum = (model.module.netG.alpha1+model.module.netG.alpha2+model.module.netG.alpha3+model.module.netG.alpha4+model.module.netG.alpha5)
-            loss_G += ( distloss.squeeze() )* opt.alpha
-
-        else:
-            distloss = torch.nn.functional.sigmoid(model.module.netG.alpha1) * dloss1(data['label'], run, whitening= False) + torch.nn.functional.sigmoid(model.module.netG.alpha2) * dloss2(data['label'], run, whitening= False) + torch.nn.functional.sigmoid(model.module.netG.alpha3) * dloss3(data['label'], run, whitening= False) + torch.nn.functional.sigmoid(model.module.netG.alpha4) * dloss4(data['label'], run, whitening= False) + torch.nn.functional.sigmoid(model.module.netG.alpha5) * dloss5(data['label'], run, whitening= False) 
-        
-            sum = torch.nn.functional.sigmoid(model.module.netG.alpha1) + torch.nn.functional.sigmoid(model.module.netG.alpha2) + torch.nn.functional.sigmoid(model.module.netG.alpha3) + torch.nn.functional.sigmoid(model.module.netG.alpha4) + torch.nn.functional.sigmoid(model.module.netG.alpha5)
-            loss_G += ( distloss.squeeze()/sum.squeeze() )* opt.alpha
-
-        # run.track(opt.alpha*distloss.item(), name = 'Distillation Loss')
-
+        _ = model.module.netG(data['label'].cuda())
+        distloss = opt.alpha1*dloss1(data['label'], run, whitening= False) + opt.alpha2*dloss2(data['label'], run, whitening= False) + opt.alpha3*dloss3(data['label'], run, whitening= False)
+        + opt.alpha4*dloss4(data['label'], run, whitening= False) + opt.alpha5*dloss5(data['label'], run, whitening= False)
+        # sum = (model.module.netG.alpha1+model.module.netG.alpha2+model.module.netG.alpha3+model.module.netG.alpha4+model.module.netG.alpha5)
+        loss_G += ( distloss.squeeze() )* opt.alpha
 
         optimizer_G.zero_grad()
         loss_G.backward()
@@ -340,8 +373,8 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
 
         os.makedirs('fake', exist_ok=True)
         os.makedirs('real', exist_ok=True)
-        # os.makedirs(f'fake/{epoch}', exist_ok=True)
-        # os.makedirs(f'real/{epoch}', exist_ok=True)
+        os.makedirs(f'fake/{opt.experiment_name}', exist_ok=True)
+        os.makedirs(f'real/{opt.experiment_name}', exist_ok=True)
         model = model.eval()
         for i, data in tqdm(enumerate(test_dataset)):   
             if i > 2000:
@@ -352,8 +385,8 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
                     Variable(data['image']), Variable(data['image']), Variable(data['feat']),infer=True)
                 gen1 = (util.tensor2im(generated.data[0]))
                 real1 = (util.tensor2im(data['image'][0]))
-                cv2.imwrite(f'fake/{i}.png', gen1[:,:,::-1])
-                cv2.imwrite(f'real/{i}.png', real1[:,:,::-1])
+                cv2.imwrite(f'fake/{opt.experiment_name}/{i}.png', gen1[:,:,::-1])
+                cv2.imwrite(f'real/{opt.experiment_name}/{i}.png', real1[:,:,::-1])
 
 
 
@@ -363,9 +396,9 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
 
         
         torch.cuda.empty_cache()
-        fid = dir_fid(f'fake', f'real')
-        lpipzz = dir_lpips(f'fake', f'real')
-        psnr = dir_psnr(f'fake', f'real')
+        fid = dir_fid(f'fake/{opt.experiment_name}', f'real/{opt.experiment_name}')
+        lpipzz = dir_lpips(f'fake/{opt.experiment_name}', f'real/{opt.experiment_name}')
+        psnr = dir_psnr(f'fake/{opt.experiment_name}', f'real/{opt.experiment_name}')
         run.track(psnr, name='PSNR')
         run.track(fid, name = 'FID')
         run.track(lpipzz, name = 'LPIPS')

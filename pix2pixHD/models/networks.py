@@ -192,9 +192,6 @@ class GlobalGenerator(nn.Module):
         self.model = K.config.make_model(config).cuda()
 
         self.final_activation_function = nn.Tanh()
-<<<<<<< Updated upstream
-        self.projector = nn.Linear(256, 512, bias=False)
-=======
         self.projector1 = nn.Linear(256, 512, bias=False)
         self.projector2 = nn.Linear(256, 512, bias=False)
         self.projector3 = nn.Linear(256, 512, bias=False)
@@ -207,7 +204,6 @@ class GlobalGenerator(nn.Module):
         self.alpha4 = nn.Parameter(torch.tensor([1.]))
         self.alpha5 = nn.Parameter(torch.tensor([1.]))
         self.alpha_sum = nn.Parameter(torch.tensor([5.]))
->>>>>>> Stashed changes
 
     def forward(self, input):
         cst = torch.ones((input.shape[0]), device=input.device)
@@ -497,10 +493,10 @@ class DistillLoss(torch.nn.Module):
     def forward(self,x,run, whitening=True):
         sxs = []
         txs = []
-        _ = self.student.netG(x.cuda())
+        # _ = self.student.netG(x.cuda())
 
-        with torch.no_grad():
-            _ = self.teacher.netG(x.cuda())
+        # with torch.no_grad():
+        #     _ = self.teacher.netG(x.cuda())
 
         projectors = [self.student.netG.projector1,self.student.netG.projector2,self.student.netG.projector3,self.student.netG.projector4,self.student.netG.projector5]
         student_patches = [self.student.netG.model.patches_for_distillation1,self.student.netG.model.patches_for_distillation2,

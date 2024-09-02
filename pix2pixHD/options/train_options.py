@@ -33,6 +33,13 @@ class TrainOptions(BaseOptions):
         self.parser.add_argument('--experiment_name', type = str, default='exp', help='do *not* use least square GAN, if false, use vanilla GAN')
         self.parser.add_argument('--resume_distill_epoch', type=int, default=0, help='epoch to resume from')
         self.parser.add_argument('--alpha', type=float, default=0, help='distillation loss weight')
+        self.parser.add_argument('--alpha1', type=float, default=0, help='distillation loss weight')
+        self.parser.add_argument('--alpha2', type=float, default=0, help='distillation loss weight')
+        self.parser.add_argument('--alpha3', type=float, default=0, help='distillation loss weight')
+        self.parser.add_argument('--alpha4', type=float, default=0, help='distillation loss weight')
+        self.parser.add_argument('--alpha5', type=float, default=0, help='distillation loss weight')
+        self.parser.add_argument('--aim_repo', type=str, default = 'nothing',help='repo to use for experiment tracking')
+
         self.parser.add_argument('--learn_weights', action='store_true')
 
 

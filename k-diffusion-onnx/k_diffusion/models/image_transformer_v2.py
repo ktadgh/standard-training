@@ -792,16 +792,12 @@ class ImageTransformerDenoiserModelV2(nn.Module):
         self.patches_for_distillation2 = x
 
         x = self.mid_level(x, pos, cond)
-<<<<<<< Updated upstream
-        self.patches_for_distillation = x
-=======
 
         self.patches_for_distillation3 = x
 
 
         distill_at = self.down_levels[len(self.splits)//2]
 
->>>>>>> Stashed changes
         for up_level, split, skip, pos in reversed(list(zip(self.up_levels, self.splits, skips, poses))):
             x = split(x, skip)
             x = up_level(x, pos, cond)
@@ -810,13 +806,9 @@ class ImageTransformerDenoiserModelV2(nn.Module):
 
         # Unpatching
         x = self.out_norm(x)
-<<<<<<< Updated upstream
-        
-=======
         self.patches_for_distillation5 = x
         # raise ValueError(self.patches_for_distillation5.shape, self.patches_for_distillation4.shape,self.patches_for_distillation3.shape,
         #                  self.patches_for_distillation2.shape, self.patches_for_distillation1.shape)
->>>>>>> Stashed changes
         x = self.patch_out(x)
         x = x.permute(0,3, 1,2)
 
