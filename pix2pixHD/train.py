@@ -242,11 +242,6 @@ if opt.resume_distill_epoch != 0:
     )
 
 
-    # To load the string back
-    loaded_data = torch.load('my_string.pth')
-    loaded_string = loaded_data['string_data']
-
-    print(loaded_string)  # Output: Hello, PyTorch!
 
     g_checkpoint = torch.load(f'checkpoints/{opt.resume_repo}/epoch_{opt.resume_distill_epoch}_netG.pth', map_location = 'cuda:0')
     d_checkpoint = torch.load(f'checkpoints/{opt.resume_repo}/epoch_{opt.resume_distill_epoch}netD.pth', map_location = 'cuda:0')
