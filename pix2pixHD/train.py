@@ -256,7 +256,7 @@ if opt.resume_distill_epoch != 0:
     
     model.module.optimizer_G.load_state_dict(og_checkpoint)
     model.module.optimizer_D.load_state_dict(od_checkpoint)
-    new_start_epoch = opt.resume_distill_epoch
+    new_start_epoch = opt.resume_distill_epoch+1
 else:
     new_start_epoch = start_epoch
     run = Run(
