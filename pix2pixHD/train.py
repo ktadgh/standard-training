@@ -167,6 +167,8 @@ args_to_remove = [
 
 ('--alpha5', str(opt.alpha5)),
 
+('--aim_repo', str(opt.aim_repo)),
+
 ]
 
 print(" args:", sys.argv)
@@ -196,8 +198,8 @@ sys.argv = filtered_args
 
 test_opt = TestOptions().parse(save=False)
 test_opt.no_flip=True
-test_opt.loadSize = 256
-test_opt.fineSize = 256
+test_opt.loadSize = 1024
+test_opt.fineSize = 1024
 test_opt.batchSize =1
 test_opt.serial_batches = True
 test_opt.phase = 'val'
@@ -276,9 +278,9 @@ torch.save(strings, f'checkpoints/{opt.name}/aim_strings.pth')
 
 # loading the teacher... 
 teacher_opt = opt
-teacher_opt.config_path = '../k-diffusion-onnx/configs/config_oxford_flowers_shifted_window.json'
+teacher_opt.config_path = '/home/ubuntu/transformer-distillation/configs/hdit_shifted_window.json'
 teacher_model = create_model(teacher_opt)
-teacher_checkpoint = torch.load('/home/ubuntu/transformer-distillation/pix2pixHD/checkpoints/oxflow-teacher/epoch_200_netG.pth')
+teacher_checkpoint = torch.load('../../latest_net_G.pth')
 teacher_model.module.netG.load_state_dict(teacher_checkpoint, strict = False)
 teacher_model.eval()
 
@@ -381,12 +383,11 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
 
 
     if epoch % opt.save_epoch_freq == 0:
-        if epoch % 5 == 0:
-            print('saving the model at the end of epoch %d, iters %d' % (epoch, total_steps))        
-            torch.save(model.module.optimizer_G.state_dict(), f'checkpoints/{opt.name}/epoch_{epoch}_optim-0.pth')
-            torch.save(model.module.optimizer_D.state_dict(), f'checkpoints/{opt.name}/epoch_{epoch}_optim-1.pth')
-            torch.save(model.module.netG.state_dict(), f'checkpoints/{opt.name}/epoch_{epoch}_netG.pth')
-            torch.save(model.module.netD.state_dict(), f'checkpoints/{opt.name}/epoch_{epoch}netD.pth')
+        print('saving the model at the end of epoch %d, iters %d' % (epoch, total_steps))        
+        torch.save(model.module.optimizer_G.state_dict(), f'checkpoints/{opt.name}/epoch_{epoch}_optim-0.pth')
+        torch.save(model.module.optimizer_D.state_dict(), f'checkpoints/{opt.name}/epoch_{epoch}_optim-1.pth')
+        torch.save(model.module.netG.state_dict(), f'checkpoints/{opt.name}/epoch_{epoch}_netG.pth')
+        torch.save(model.module.netD.state_dict(), f'checkpoints/{opt.name}/epoch_{epoch}netD.pth')
 
         os.makedirs('fake', exist_ok=True)
         os.makedirs('real', exist_ok=True)

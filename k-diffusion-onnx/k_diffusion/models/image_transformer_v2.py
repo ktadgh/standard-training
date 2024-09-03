@@ -318,7 +318,7 @@ def apply_window_attention(window_size, window_shift, q, k, v, scale=None):
 
     # do the attention here
     flops.op(flops.op_attention, q_seqs.shape, k_seqs.shape, v_seqs.shape)
-    qkv = F.scaled_dot_product_attention(q_seqs, k_seqs, v_seqs, mask, scale=scale)
+    qkv = F.scaled_dot_product_attention(q_seqs, k_seqs, v_seqs, mask)#, scale=scale)
 
     # unwindow
     qkv = torch.reshape(qkv, (b, heads, h, w, wh, ww, d_head))
@@ -370,7 +370,7 @@ class SelfAttentionBlock(nn.Module):
         q = apply_rotary_emb(q, theta)
         k = apply_rotary_emb(k, theta)
         flops.op(flops.op_attention, q.shape, k.shape, v.shape)
-        x = F.scaled_dot_product_attention(q, k, v, scale=1.0)
+        x = F.scaled_dot_product_attention(q, k, v)#, scale=1.0)
         x = rearrange(x, "n nh (h w) e -> n h w (nh e)", h=skip.shape[-3], w=skip.shape[-2])
         x = self.dropout(x)
         x = self.out_proj(x)
@@ -618,6 +618,7 @@ class TokenMerge(nn.Module):
         self.h = patch_size[0]
         self.w = patch_size[1]
         self.proj = apply_wd(Linear(in_features * self.h * self.w, out_features, bias=False))
+        print(f'proj shape = {self.proj.weight.shape} \n out_features = {out_features} \n other_dim = {in_features * self.h * self.w}', flush=True)
 
     def forward(self, x):
         x = rearrange(x, "... (h nh) (w nw) e -> ... h w (nh nw e)", nh=self.h, nw=self.w)
@@ -755,8 +756,8 @@ class ImageTransformerDenoiserModelV2(nn.Module):
 
     def forward(self, x, sigma, aug_cond=None, class_cond=None, mapping_cond=None):
         # Patching
-
         x = x.permute(0,2,3,1)
+        # raise ValueError(x.shape)
         x = self.patch_in(x)
 
         # TODO: pixel aspect ratio for nonsquare patches
@@ -796,21 +797,19 @@ class ImageTransformerDenoiserModelV2(nn.Module):
         self.patches_for_distillation3 = x
 
 
-        distill_at = self.down_levels[len(self.splits)//2]
-
+        distill_at = self.up_levels[len(self.splits)//2]
+        
         for up_level, split, skip, pos in reversed(list(zip(self.up_levels, self.splits, skips, poses))):
             x = split(x, skip)
             x = up_level(x, pos, cond)
-            if distill_at == down_level:
+            if distill_at == up_level:
                 self.patches_for_distillation4 = x
-
+        
         # Unpatching
         x = self.out_norm(x)
         self.patches_for_distillation5 = x
         # raise ValueError(self.patches_for_distillation5.shape, self.patches_for_distillation4.shape,self.patches_for_distillation3.shape,
         #                  self.patches_for_distillation2.shape, self.patches_for_distillation1.shape)
         x = self.patch_out(x)
-        x = x.permute(0,3, 1,2)
-
-
+        x = x.permute(0,3,1,2)
         return x

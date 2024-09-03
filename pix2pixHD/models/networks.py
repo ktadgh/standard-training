@@ -192,11 +192,11 @@ class GlobalGenerator(nn.Module):
         self.model = K.config.make_model(config).cuda()
 
         self.final_activation_function = nn.Tanh()
-        self.projector1 = nn.Linear(256, 512, bias=False)
-        self.projector2 = nn.Linear(256, 512, bias=False)
-        self.projector3 = nn.Linear(256, 512, bias=False)
-        self.projector4 = nn.Linear(64, 128, bias=False)
-        self.projector5 = nn.Linear(64, 128, bias=False)
+        self.projector1 = nn.Linear(768, 768, bias=False)
+        self.projector2 = nn.Linear(1024, 1024, bias=False)
+        self.projector3 = nn.Linear(1024, 1024, bias=False)
+        self.projector4 = nn.Linear(384, 384, bias=False)
+        self.projector5 = nn.Linear(128, 128, bias=False)
 
         self.alpha1 = nn.Parameter(torch.tensor([1.]))
         self.alpha2 = nn.Parameter(torch.tensor([1.]))
@@ -295,7 +295,7 @@ class MultiscaleDiscriminator(nn.Module):
         self.num_D = num_D
         self.n_layers = n_layers
         self.getIntermFeat = getIntermFeat
-     
+        input_nc = 12
         for i in range(num_D):
             netD = NLayerDiscriminator(input_nc, ndf, n_layers, norm_layer, use_sigmoid, getIntermFeat)
             if getIntermFeat:                                
@@ -508,6 +508,7 @@ class DistillLoss(torch.nn.Module):
                            self.teacher.netG.model.patches_for_distillation5]
 
         layer_index = self.layer-1
+        # print(layer_index, flush=True)
         sxs = projectors[layer_index](student_patches[layer_index].mean(dim=(1,2)))
         txs = teacher_patches[layer_index].mean(dim=(1,2))
         
