@@ -276,7 +276,7 @@ torch.save(strings, f'checkpoints/{opt.name}/aim_strings.pth')
 teacher_opt = opt
 teacher_opt.config_path = '/home/ubuntu/transformer-distillation/configs/hdit_shifted_window.json'
 teacher_model = create_model(teacher_opt)
-teacher_checkpoint = torch.load('../../latest_net_G.pth')
+teacher_checkpoint = torch.load('/home/ubuntu/utah/h100_pix2pixHD_dynamic_dataset/checkpoints/training_dynamic_ssd/75_net_G.pth')
 teacher_model.module.netG.load_state_dict(teacher_checkpoint, strict = False)
 teacher_model.eval()
 
@@ -295,8 +295,6 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
 
     
     for i, data in enumerate(dataset, start=epoch_iter):
-        if not teacher_tested:
-            break
         if total_steps % opt.print_freq == print_delta:
             iter_start_time = time.time()
         total_steps += opt.batchSize
