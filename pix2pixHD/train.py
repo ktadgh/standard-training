@@ -293,6 +293,7 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
     losses_G= 0
     losses_D= 0
 
+    
     for i, data in enumerate(dataset, start=epoch_iter):
         if total_steps % opt.print_freq == print_delta:
             iter_start_time = time.time()
@@ -387,8 +388,11 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
 
         os.makedirs('fake', exist_ok=True)
         os.makedirs('real', exist_ok=True)
+        os.makedirs('teacher', exist_ok=True)
         os.makedirs(f'fake/{opt.experiment_name}', exist_ok=True)
         os.makedirs(f'real/{opt.experiment_name}', exist_ok=True)
+        os.makedirs(f'teacher/{opt.experiment_name}', exist_ok=True)
+
         model = model.eval()
         for i, data in tqdm(enumerate(test_dataset)):   
             if i > 2000:
