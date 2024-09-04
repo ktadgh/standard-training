@@ -35,6 +35,7 @@ import torch
 import re
 from tqdm import tqdm
 
+teacher_tested = False
 
 def dir_psnr(A, B):
     psnr = PeakSignalNoiseRatio(data_range =1.)
@@ -401,11 +402,16 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
                 cv2.imwrite(f'fake/{opt.experiment_name}/{i}.png', gen1[:,:,::-1])
                 cv2.imwrite(f'real/{opt.experiment_name}/{i}.png', real1[:,:,::-1])
 
+            if not teacher_tested:
+                    _ , teacher_generated = model.forward(Variable(data['label']), Variable(data['inst']), 
+                    Variable(data['image']), Variable(data['image']), Variable(data['feat']),infer=True)
+                    teacher_gen1 = (util.tensor2im(teacher_generated.data[0]))
+                    cv2.imwrite(f'teacher/{opt.experiment_name}/{i}.png', teacher_gen1[:,:,::-1])
 
 
         del gen1
         del real1
-
+        del teacher_gen1
 
         
         torch.cuda.empty_cache()
@@ -419,6 +425,18 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
         run.track(fid, name = 'FID')
         run.track(lpipzz, name = 'LPIPS')
 
+        if not teacher_tested:
+            fid = dir_fid(f'teacher/{opt.experiment_name}', f'real/{opt.experiment_name}')
+            lpipzz = dir_lpips(f'teacher/{opt.experiment_name}', f'real/{opt.experiment_name}')
+            psnr = dir_psnr(f'teacher/{opt.experiment_name}', f'real/{opt.experiment_name}')
+            tpsnr = dir_tpsnr(f'teacher/{opt.experiment_name}', f'real/{opt.experiment_name}')
+            
+            run.track(psnr, name='Teacher PSNR')
+            run.track(tpsnr, name='Teacher tPSNR')
+            run.track(fid, name = 'Teacher FID')
+            run.track(lpipzz, name = 'Teacher LPIPS')
+            teacher_tested = True
+            
     ### instead of only training the local enhancer, train the entire network after certain iterations
     if (opt.niter_fix_global != 0) and (epoch == opt.niter_fix_global):
         model.module.update_fixed_params()
