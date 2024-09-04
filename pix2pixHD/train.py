@@ -295,6 +295,8 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
 
     
     for i, data in enumerate(dataset, start=epoch_iter):
+        if not teacher_tested:
+            break
         if total_steps % opt.print_freq == print_delta:
             iter_start_time = time.time()
         total_steps += opt.batchSize
@@ -407,7 +409,7 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
                 cv2.imwrite(f'real/{opt.experiment_name}/{i}.png', real1[:,:,::-1])
 
             if not teacher_tested:
-                    _ , teacher_generated = model.forward(Variable(data['label']), Variable(data['inst']), 
+                    _ , teacher_generated = teacher_model.forward(Variable(data['label']), Variable(data['inst']), 
                     Variable(data['image']), Variable(data['image']), Variable(data['feat']),infer=True)
                     teacher_gen1 = (util.tensor2im(teacher_generated.data[0]))
                     cv2.imwrite(f'teacher/{opt.experiment_name}/{i}.png', teacher_gen1[:,:,::-1])
