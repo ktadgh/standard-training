@@ -31,7 +31,9 @@ if flags.get_use_compile():
     torch._dynamo.config.cache_size_limit = max(64, torch._dynamo.config.cache_size_limit)
     torch._dynamo.config.suppress_errors = True
 
+import torchvision
 
+padding = torchvision.transforms.Pad(64)
 # Helpers
 
 def zero_init(layer):
@@ -493,7 +495,7 @@ class ShiftedWindowSelfAttentionBlock(nn.Module):
         q = apply_rotary_emb(q, theta)
 
         k = apply_rotary_emb(k, theta)
-
+        print(f'Shape of X: {x.shape}')
         x = apply_window_attention(self.window_size, self.window_shift, q, k, v, scale=1.0)
 
         x = rearrange(x, "n nh h w e -> n h w (nh e)")
@@ -756,6 +758,7 @@ class ImageTransformerDenoiserModelV2(nn.Module):
 
     def forward(self, x, sigma, aug_cond=None, class_cond=None, mapping_cond=None):
         # Patching
+        x = padding(x)
         x = x.permute(0,2,3,1)
         # raise ValueError(x.shape)
         x = self.patch_in(x)
@@ -783,6 +786,7 @@ class ImageTransformerDenoiserModelV2(nn.Module):
 
         for down_level, merge in zip(self.down_levels, self.merges):
             x = down_level(x, pos, cond)
+            print(f'Shape of x = {x.shape}')
             skips.append(x)
             poses.append(pos)
             x = merge(x)
@@ -812,4 +816,5 @@ class ImageTransformerDenoiserModelV2(nn.Module):
         #                  self.patches_for_distillation2.shape, self.patches_for_distillation1.shape)
         x = self.patch_out(x)
         x = x.permute(0,3,1,2)
+        x = x[:,:,1:-1,1:-1]
         return x
