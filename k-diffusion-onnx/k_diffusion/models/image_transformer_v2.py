@@ -239,14 +239,10 @@ class AxialRoPE(nn.Module):
 
 def window(window_size, x):
     *b, h, w, c = x.shape
-    try:
-        x = torch.reshape(
-            x,
-            (*b, h // window_size, window_size, w // window_size, window_size, c),
-        )
-    except:
-        raise ValueError(f'h,w,c = {h, w, c} \n window_size = {window_size}' )
-
+    x = torch.reshape(
+        x,
+        (*b, h // window_size, window_size, w // window_size, window_size, c),
+    )
     n = x.ndim
     x = torch.permute(
         x,
@@ -308,26 +304,84 @@ def make_shifted_window_masks(n_h_w, n_w_w, w_h, w_w, shift, device=None):
     m = m_corner | m_left | m_top | m_rest
     return m
 
+class FocusedLinearAttention(nn.Module):
+    r""" Window based multi-head self attention (W-MSA) module with relative position bias.
+    It supports both of shifted and non-shifted window.
 
-def apply_window_attention(window_size, window_shift, q, k, v, scale=None):
-    # prep windows and masks
-    q_windows = shifted_window(window_size, window_shift, q)
-    k_windows = shifted_window(window_size, window_shift, k)
-    v_windows = shifted_window(window_size, window_shift, v)
-    b, heads, h, w, wh, ww, d_head = q_windows.shape
-    mask = make_shifted_window_masks(h, w, wh, ww, window_shift, device=q.device)
-    q_seqs = torch.reshape(q_windows, (b, heads, h, w, wh * ww, d_head))
-    k_seqs = torch.reshape(k_windows, (b, heads, h, w, wh * ww, d_head))
-    v_seqs = torch.reshape(v_windows, (b, heads, h, w, wh * ww, d_head))
-    mask = torch.reshape(mask, (h, w, wh * ww, wh * ww))
+    Args:
+        dim (int): Number of input channels.
+        window_size (tuple[int]): The height and width of the window.
+        num_heads (int): Number of attention heads.
+        qkv_bias (bool, optional):  If True, add a learnable bias to query, key, value. Default: True
+        qk_scale (float | None, optional): Override default qk scale of head_dim ** -0.5 if set
+        attn_drop (float, optional): Dropout ratio of attention weight. Default: 0.0
+        proj_drop (float, optional): Dropout ratio of output. Default: 0.0
+    """
 
-    # do the attention here
-    flops.op(flops.op_attention, q_seqs.shape, k_seqs.shape, v_seqs.shape)
-    qkv = F.scaled_dot_product_attention(q_seqs, k_seqs, v_seqs, mask)#, scale=scale)
+    def __init__(self, dim, window_size, num_heads, qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0.,
+                 focusing_factor=3, kernel_size=5):
 
-    # unwindow
-    qkv = torch.reshape(qkv, (b, heads, h, w, wh, ww, d_head))
-    return shifted_unwindow(window_shift, qkv)
+        super().__init__()
+        self.dim = dim
+        self.window_size = window_size  # Wh, Ww
+        self.num_heads = num_heads
+        head_dim = dim // num_heads
+
+        self.focusing_factor = focusing_factor
+        self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
+        self.attn_drop = nn.Dropout(attn_drop)
+        self.proj = nn.Linear(dim, dim)
+        self.proj_drop = nn.Dropout(proj_drop)
+
+        self.softmax = nn.Softmax(dim=-1)
+
+        self.dwc = nn.Conv2d(in_channels=head_dim, out_channels=head_dim, kernel_size=kernel_size,
+                             groups=head_dim, padding=kernel_size // 2)
+        self.scale = nn.Parameter(torch.zeros(size=(1, 1, dim)))
+        self.positional_encoding = nn.Parameter(torch.zeros(size=(1, window_size[0] * window_size[1], dim)))
+        # print('Linear Attention window{} f{} kernel{}'.
+        #       format(window_size, focusing_factor, kernel_size))
+
+    def forward(self, x, mask=None):
+        """
+        Args:
+            x: input features with shape of (num_windows*B, N, C)
+            mask: (0/-inf) mask with shape of (num_windows, Wh*Ww, Wh*Ww) or None
+        """
+        B, N, C = x.shape
+        qkv = self.qkv(x).reshape(B, N, 3, C).permute(2, 0, 1, 3)
+        q, k, v = qkv.unbind(0)
+        k = k + self.positional_encoding
+        focusing_factor = self.focusing_factor
+        kernel_function = nn.ReLU()
+        q = kernel_function(q) + 1e-6
+        k = kernel_function(k) + 1e-6
+        scale = nn.Softplus()(self.scale)
+        q = q / scale
+        k = k / scale
+        q_norm = q.norm(dim=-1, keepdim=True)
+        k_norm = k.norm(dim=-1, keepdim=True)
+        q = q ** focusing_factor
+        k = k ** focusing_factor
+        q = (q / q.norm(dim=-1, keepdim=True)) * q_norm
+        k = (k / k.norm(dim=-1, keepdim=True)) * k_norm
+
+        q = q.reshape(B, N, self.num_heads, -1).permute(0, 2, 1, 3)
+        k = k.reshape(B, N, self.num_heads, -1).permute(0, 2, 1, 3)
+        v = v.reshape(B, N, self.num_heads, -1).permute(0, 2, 1, 3)
+
+        z = 1 / (q @ k.mean(dim=-2, keepdim=True).transpose(-2, -1) + 1e-6)
+        kv = (k.transpose(-2, -1) * (N ** -0.5)) @ (v * (N ** -0.5))
+        x = q @ kv * z
+
+        H = W = int(N ** 0.5)
+        x = x.transpose(1, 2).reshape(B, N, C)
+        v = v.reshape(B * self.num_heads, H, W, -1).permute(0, 3, 1, 2)
+        x = x + self.dwc(v).reshape(B, C, N).permute(0, 2, 1)
+
+        x = self.proj(x)
+        x = self.proj_drop(x)
+        return x
 
 
 # Transformer layers
@@ -343,6 +397,91 @@ def use_flash_2(x):
     if x.dtype not in (torch.float16, torch.bfloat16):
         return False
     return True
+
+
+class FocusedLinearAttention(nn.Module):
+    r""" Window based multi-head self attention (W-MSA) module with relative position bias.
+    It supports both of shifted and non-shifted window.
+
+    Args:
+        dim (int): Number of input channels.
+        window_size (tuple[int]): The height and width of the window.
+        num_heads (int): Number of attention heads.
+        qkv_bias (bool, optional):  If True, add a learnable bias to query, key, value. Default: True
+        qk_scale (float | None, optional): Override default qk scale of head_dim ** -0.5 if set
+        attn_drop (float, optional): Dropout ratio of attention weight. Default: 0.0
+        proj_drop (float, optional): Dropout ratio of output. Default: 0.0
+    """
+
+    def __init__(self, dim, window_size, num_heads, qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0.,
+                 focusing_factor=3, kernel_size=5):
+
+        super().__init__()
+        self.dim = dim
+        self.window_size = window_size  # Wh, Ww
+        self.num_heads = num_heads
+        head_dim = dim // num_heads
+
+        self.focusing_factor = focusing_factor
+        self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
+        self.attn_drop = nn.Dropout(attn_drop)
+        self.proj = nn.Linear(dim, dim)
+        self.proj_drop = nn.Dropout(proj_drop)
+
+        self.softmax = nn.Softmax(dim=-1)
+
+        self.dwc = nn.Conv2d(in_channels=head_dim, out_channels=head_dim, kernel_size=kernel_size,
+                             groups=head_dim, padding=kernel_size // 2)
+        self.scale = nn.Parameter(torch.zeros(size=(1, 1, dim)))
+        self.positional_encoding = nn.Parameter(torch.zeros(size=(1, window_size[0] * window_size[1], dim)))
+        # print('Linear Attention window{} f{} kernel{}'.
+        #       format(window_size, focusing_factor, kernel_size))
+
+    def forward(self, x, mask=None):
+        """
+        Args:
+            x: input features with shape of (num_windows*B, N, C)
+            mask: (0/-inf) mask with shape of (num_windows, Wh*Ww, Wh*Ww) or None
+        """
+        B, N, C = x.shape
+        qkv = self.qkv(x).reshape(B, N, 3, C).permute(2, 0, 1, 3)
+        q, k, v = qkv.unbind(0)
+        k = k + self.positional_encoding
+        focusing_factor = self.focusing_factor
+        kernel_function = nn.ReLU()
+        q = kernel_function(q) + 1e-6
+        k = kernel_function(k) + 1e-6
+        scale = nn.Softplus()(self.scale)
+        q = q / scale
+        k = k / scale
+        q_norm = q.norm(dim=-1, keepdim=True)
+        k_norm = k.norm(dim=-1, keepdim=True)
+        q = q ** focusing_factor
+        k = k ** focusing_factor
+        q = (q / q.norm(dim=-1, keepdim=True)) * q_norm
+        k = (k / k.norm(dim=-1, keepdim=True)) * k_norm
+
+        q = q.reshape(B, N, self.num_heads, -1).permute(0, 2, 1, 3)
+        k = k.reshape(B, N, self.num_heads, -1).permute(0, 2, 1, 3)
+        v = v.reshape(B, N, self.num_heads, -1).permute(0, 2, 1, 3)
+
+        z = 1 / (q @ k.mean(dim=-2, keepdim=True).transpose(-2, -1) + 1e-6)
+        kv = (k.transpose(-2, -1) * (N ** -0.5)) @ (v * (N ** -0.5))
+        x = q @ kv * z
+
+        H = W = int(N ** 0.5)
+        x = x.transpose(1, 2).reshape(B, N, C)
+        v = v.reshape(B * self.num_heads, H, W, -1).permute(0, 3, 1, 2)
+        x = x + self.dwc(v).reshape(B, C, N).permute(0, 2, 1)
+
+        x = self.proj(x)
+        x = self.proj_drop(x)
+        return x
+
+    def eval(self):
+        super().eval()
+        print('eval')
+
 
 
 class SelfAttentionBlock(nn.Module):
@@ -478,33 +617,24 @@ class ShiftedWindowSelfAttentionBlock(nn.Module):
         self.dropout = nn.Dropout(dropout)
         self.out_proj = apply_wd(zero_init(Linear(d_model, d_model, bias=False)))
 
+
     def extra_repr(self):
         return f"d_head={self.d_head}, window_size={self.window_size}, window_shift={self.window_shift}"
 
     def forward(self, x, pos, cond):
-
         skip = x
+        x = window(8,x)
+        a,b,c,d,e,f =(x.shape)
+        x = x.reshape(a*b*c,d*e,f)
+        
+        fla = FocusedLinearAttention(f, (8,8),self.n_heads).cuda()
         x = self.norm(x, cond)
-        qkv = self.qkv_proj(x)
-        q, k, v = torch.chunk(edit11(qkv, t=3, e=self.d_head),3, dim =0)
-        q, k, v = q.squeeze(0), k.squeeze(0), v.squeeze(0)
-        # print(f'q shape = {q.shape} \n k shape = {k.shape}', flush = True)
-
-
-        q, k = scale_for_cosine_sim(q, k, self.scale[:, None, None, None], 1e-6)
-
-        theta = self.pos_emb(pos).permute(2,0,1,3)
-
-        q = apply_rotary_emb(q, theta)
-
-        k = apply_rotary_emb(k, theta)
-        print(f'Shape of X in window: {x.shape}', flush=True)
-        x = apply_window_attention(self.window_size, self.window_shift, q, k, v, scale=1.0)
-        print(f'APPLIED WINDOW ATTENTION: {x.shape}', flush=True)
-        x = rearrange(x, "n nh h w e -> n h w (nh e)")
-        x = self.dropout(x)
-        x = self.out_proj(x)
-
+        
+        x = fla(x.squeeze())
+        
+        x = x.reshape(a,b,c,d,e,f)
+        x = x.permute(0,1,3,2,4,5)
+        x = x.reshape(a, b*d, c*e, f)
         return x + skip
 
 class FeedForwardBlock(nn.Module):
@@ -819,5 +949,4 @@ class ImageTransformerDenoiserModelV2(nn.Module):
         #                  self.patches_for_distillation2.shape, self.patches_for_distillation1.shape)
         x = self.patch_out(x)
         x = x.permute(0,3,1,2)
-        x = x[:,:,pad:-pad,pad:-pad]
         return x
