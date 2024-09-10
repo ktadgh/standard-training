@@ -761,11 +761,6 @@ class ImageTransformerDenoiserModelV2(nn.Module):
 
     def forward(self, x, sigma, aug_cond=None, class_cond=None, mapping_cond=None):
         # Patching
-        pad = 16
-        padding = torchvision.transforms.Pad(pad)
-        padding2 = torchvision.transforms.Pad(2)
-
-        x = padding(x)
         x = x.permute(0,2,3,1)
 
         # raise ValueError(x.shape)
@@ -793,9 +788,6 @@ class ImageTransformerDenoiserModelV2(nn.Module):
 
         for down_level, merge in zip(self.down_levels, self.merges):
             a,b,c,d = x.shape
-            if b%8 != 0:
-                x = padding2(x.permute(0,3,2,1)).permute(0,3,2,1)
-                pos = padding2(pos.permute(2,0,1)).permute(1,2,0)
             x = down_level(x, pos, cond)
             skips.append(x)
             poses.append(pos)
@@ -815,8 +807,6 @@ class ImageTransformerDenoiserModelV2(nn.Module):
         
         for up_level, split, skip, pos in reversed(list(zip(self.up_levels, self.splits, skips, poses))):
             a,b,c,d = x.shape
-            if b == 48:
-                x = x[:,2:-2,2:-2,:]
             x = split(x, skip)
             x = up_level(x, pos, cond)
             if distill_at == up_level:
