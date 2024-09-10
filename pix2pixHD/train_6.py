@@ -273,18 +273,18 @@ torch.save(strings, f'checkpoints/{opt.name}/aim_strings.pth')
 
 
 # loading the teacher... 
-teacher_opt = opt
-teacher_opt.config_path = '/home/ubuntu/transformer-distillation/configs/hdit_shifted_window.json'
-teacher_model = create_model(teacher_opt)
-teacher_checkpoint = torch.load('/home/ubuntu/utah/h100_pix2pixHD_dynamic_dataset/checkpoints/training_dynamic_ssd/75_net_G.pth')
-teacher_model.module.netG.load_state_dict(teacher_checkpoint, strict = False)
-teacher_model.eval()
+# teacher_opt = opt
+# teacher_opt.config_path = '/home/ubuntu/transformer-distillation/configs/hdit_shifted_window.json'
+# teacher_model = create_model(teacher_opt)
+# teacher_checkpoint = torch.load('/home/ubuntu/utah/h100_pix2pixHD_dynamic_dataset/checkpoints/training_dynamic_ssd/75_net_G.pth')
+# teacher_model.module.netG.load_state_dict(teacher_checkpoint, strict = False)
+# teacher_model.eval()
 
-dloss1 = DistillLoss(teacher_model.module, model.module, layer=1)
-dloss2 = DistillLoss(teacher_model.module, model.module, layer=2)
-dloss3 = DistillLoss(teacher_model.module, model.module, layer=3)
-dloss4 = DistillLoss(teacher_model.module, model.module, layer=4)
-dloss5 = DistillLoss(teacher_model.module, model.module, layer=5)
+# dloss1 = DistillLoss(teacher_model.module, model.module, layer=1)
+# dloss2 = DistillLoss(teacher_model.module, model.module, layer=2)
+# dloss3 = DistillLoss(teacher_model.module, model.module, layer=3)
+# dloss4 = DistillLoss(teacher_model.module, model.module, layer=4)
+# dloss5 = DistillLoss(teacher_model.module, model.module, layer=5)
 
 for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
     epoch_start_time = time.time()
@@ -303,17 +303,17 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
         # whether to collect output images
         save_fake = total_steps % opt.display_freq == display_delta
         
-        with torch.no_grad():
-            teacher_image = teacher_model.module.netG(data['label'].cuda())
+        # with torch.no_grad():
+            # teacher_image = teacher_model.module.netG(data['label'].cuda())
 
         ############## Forward Pass ######################
         if i == 0:
             losses, generated = model.forward(Variable(data['label']), Variable(data['inst']), 
-                Variable(data['image']),Variable(teacher_image), Variable(data['feat']),infer=True, teacher_adv = opt.teacher_adv,
+                Variable(data['image']),Variable(data['image']), Variable(data['feat']),infer=True, teacher_adv = opt.teacher_adv,
                 teacher_feat = opt.teacher_feat,teacher_vgg = opt.teacher_vgg)
         else:
             losses, generated = model.forward(Variable(data['label']), Variable(data['inst']), 
-                Variable(data['image']), Variable(teacher_image), Variable(data['feat']),infer=False, teacher_adv = opt.teacher_adv,
+                Variable(data['image']), Variable(data['image']), Variable(data['feat']),infer=False, teacher_adv = opt.teacher_adv,
                 teacher_feat = opt.teacher_feat,teacher_vgg = opt.teacher_vgg)       
 
         # sum per device losses
@@ -359,7 +359,6 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
             gen1 = Image(util.tensor2im(generated.data[0]))
             real1 = Image(util.tensor2im(data['image'][0]))
             inp1 = Image(util.tensor2im(data['label'][0]))
-            t1 = Image(util.tensor2im(teacher_image[0]))
 
             run.track(gen1, name = 'generated image')
             run.track(real1, name = 'real image')
@@ -406,16 +405,10 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
                 cv2.imwrite(f'fake/{opt.experiment_name}/{i}.png', gen1[:,:,::-1])
                 cv2.imwrite(f'real/{opt.experiment_name}/{i}.png', real1[:,:,::-1])
 
-            if not teacher_tested:
-                    _ , teacher_generated = teacher_model.forward(Variable(data['label']), Variable(data['inst']), 
-                    Variable(data['image']), Variable(data['image']), Variable(data['feat']),infer=True)
-                    teacher_gen1 = (util.tensor2im(teacher_generated.data[0]))
-                    cv2.imwrite(f'teacher/{opt.experiment_name}/{i}.png', teacher_gen1[:,:,::-1])
 
 
         del gen1
         del real1
-        del teacher_gen1
 
         
         torch.cuda.empty_cache()
