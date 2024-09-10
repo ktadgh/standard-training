@@ -295,7 +295,7 @@ class MultiscaleDiscriminator(nn.Module):
         self.num_D = num_D
         self.n_layers = n_layers
         self.getIntermFeat = getIntermFeat
-        input_nc = 12
+        input_nc = 6
         for i in range(num_D):
             netD = NLayerDiscriminator(input_nc, ndf, n_layers, norm_layer, use_sigmoid, getIntermFeat)
             if getIntermFeat:                                

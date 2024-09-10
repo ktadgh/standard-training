@@ -33,7 +33,6 @@ if flags.get_use_compile():
 
 import torchvision
 
-padding = torchvision.transforms.Pad(64)
 # Helpers
 
 def zero_init(layer):
@@ -240,10 +239,14 @@ class AxialRoPE(nn.Module):
 
 def window(window_size, x):
     *b, h, w, c = x.shape
-    x = torch.reshape(
-        x,
-        (*b, h // window_size, window_size, w // window_size, window_size, c),
-    )
+    try:
+        x = torch.reshape(
+            x,
+            (*b, h // window_size, window_size, w // window_size, window_size, c),
+        )
+    except:
+        raise ValueError(f'h,w,c = {h, w, c} \n window_size = {window_size}' )
+
     n = x.ndim
     x = torch.permute(
         x,
@@ -495,9 +498,9 @@ class ShiftedWindowSelfAttentionBlock(nn.Module):
         q = apply_rotary_emb(q, theta)
 
         k = apply_rotary_emb(k, theta)
-        print(f'Shape of X: {x.shape}')
+        print(f'Shape of X in window: {x.shape}', flush=True)
         x = apply_window_attention(self.window_size, self.window_shift, q, k, v, scale=1.0)
-
+        print(f'APPLIED WINDOW ATTENTION: {x.shape}', flush=True)
         x = rearrange(x, "n nh h w e -> n h w (nh e)")
         x = self.dropout(x)
         x = self.out_proj(x)
@@ -758,11 +761,15 @@ class ImageTransformerDenoiserModelV2(nn.Module):
 
     def forward(self, x, sigma, aug_cond=None, class_cond=None, mapping_cond=None):
         # Patching
+        pad = 16
+        padding = torchvision.transforms.Pad(pad)
+        padding2 = torchvision.transforms.Pad(2)
+
         x = padding(x)
         x = x.permute(0,2,3,1)
+
         # raise ValueError(x.shape)
         x = self.patch_in(x)
-
         # TODO: pixel aspect ratio for nonsquare patches
         pos = make_axial_pos(x.shape[1], x.shape[2], device=x.device).view(x.shape[1], x.shape[2], 2)
 
@@ -785,8 +792,11 @@ class ImageTransformerDenoiserModelV2(nn.Module):
         distill_at = self.down_levels[len(self.merges)//2]
 
         for down_level, merge in zip(self.down_levels, self.merges):
+            a,b,c,d = x.shape
+            if b%8 != 0:
+                x = padding2(x.permute(0,3,2,1)).permute(0,3,2,1)
+                pos = padding2(pos.permute(2,0,1)).permute(1,2,0)
             x = down_level(x, pos, cond)
-            print(f'Shape of x = {x.shape}')
             skips.append(x)
             poses.append(pos)
             x = merge(x)
@@ -804,6 +814,9 @@ class ImageTransformerDenoiserModelV2(nn.Module):
         distill_at = self.up_levels[len(self.splits)//2]
         
         for up_level, split, skip, pos in reversed(list(zip(self.up_levels, self.splits, skips, poses))):
+            a,b,c,d = x.shape
+            if b == 48:
+                x = x[:,2:-2,2:-2,:]
             x = split(x, skip)
             x = up_level(x, pos, cond)
             if distill_at == up_level:
@@ -816,5 +829,5 @@ class ImageTransformerDenoiserModelV2(nn.Module):
         #                  self.patches_for_distillation2.shape, self.patches_for_distillation1.shape)
         x = self.patch_out(x)
         x = x.permute(0,3,1,2)
-        x = x[:,:,1:-1,1:-1]
+        x = x[:,:,pad:-pad,pad:-pad]
         return x
