@@ -57,41 +57,41 @@ class AlignedDataset(BaseDataset):
         ### input A (label maps)
         if opt.phase == 'train':
             dir_A = '_A' if self.opt.label_nc == 0 else '_label'
-            self.dir_A = "/home/ubuntu/utah/DYNAMIC_DATASET/1082024_1_49999/Forge/images" #os.path.join(opt.dataroot, opt.phase + dir_A)
+            self.dir_A = "/home/ubuntu/MovementDataset_Validation/Forge/images" #os.path.join(opt.dataroot, opt.phase + dir_A)
             self.A_paths = sorted(make_dataset(self.dir_A))
 
             ### input B (real images)
             if opt.isTrain or opt.use_encoded_image:
                 dir_B = '_B' if self.opt.label_nc == 0 else '_img'
-                self.dir_B = "/home/ubuntu/utah/DYNAMIC_DATASET/1082024_1_49999/UE"#os.path.join(opt.dataroot, opt.phase + dir_B)  
+                self.dir_B = "/home/ubuntu/MovementDataset_Validation/UE"#os.path.join(opt.dataroot, opt.phase + dir_B)  
                 self.B_paths = sorted(make_dataset(self.dir_B))
 
             ### IDs and depth
-            self.dir_depth = "/home/ubuntu/utah/DYNAMIC_DATASET/1082024_1_49999/Forge/PCOData"#os.path.join(opt.dataroot, "PCOData")  
+            self.dir_depth = "/home/ubuntu/MovementDataset_Validation/Forge/PCOData"#os.path.join(opt.dataroot, "PCOData")  
             self.depth_paths = sorted(make_dataset(self.dir_depth))
 
             ### WorldPos
-            self.dir_world_pos = "/home/ubuntu/utah/DYNAMIC_DATASET/1082024_1_49999/Forge/WorldPosData"#os.path.join(opt.dataroot, "WorldPosData")  
+            self.dir_world_pos = "/home/ubuntu/MovementDataset_Validation/Forge/WorldPosData"#os.path.join(opt.dataroot, "WorldPosData")  
             self.worldpos_paths = sorted(make_dataset(self.dir_world_pos))
 
 
         elif opt.phase == 'test' or opt.phase == 'val':
             dir_A = '_A' if self.opt.label_nc == 0 else '_label'
-            self.dir_A = "/home/ubuntu/utah/MovementDataset_Validation/Forge/images" #os.path.join(opt.dataroot, opt.phase + dir_A)
+            self.dir_A = "/home/ubuntu/MovementDataset_Validation/Forge/images" #os.path.join(opt.dataroot, opt.phase + dir_A)
             self.A_paths = sorted(make_dataset(self.dir_A))
 
             ### input B (real images)
             if opt.isTrain or opt.use_encoded_image:
                 dir_B = '_B' if self.opt.label_nc == 0 else '_img'
-                self.dir_B = "/home/ubuntu/utah/MovementDataset_Validation/UE"#os.path.join(opt.dataroot, opt.phase + dir_B)  
+                self.dir_B = "/home/ubuntu/MovementDataset_Validation/UE"#os.path.join(opt.dataroot, opt.phase + dir_B)  
                 self.B_paths = sorted(make_dataset(self.dir_B))
 
             ### IDs and depth
-            self.dir_depth = "/home/ubuntu/utah/MovementDataset_Validation/Forge/PCOData"#os.path.join(opt.dataroot, "PCOData")  
+            self.dir_depth = "/home/ubuntu/MovementDataset_Validation/Forge/PCOData"#os.path.join(opt.dataroot, "PCOData")  
             self.depth_paths = sorted(make_dataset(self.dir_depth))
 
             ### WorldPos
-            self.dir_world_pos = "/home/ubuntu/utah/MovementDataset_Validation/Forge/WorldPosData"#os.path.join(opt.dataroot, "WorldPosData")  
+            self.dir_world_pos = "/home/ubuntu/MovementDataset_Validation/Forge/WorldPosData"#os.path.join(opt.dataroot, "WorldPosData")  
             self.worldpos_paths = sorted(make_dataset(self.dir_world_pos))
 
 
