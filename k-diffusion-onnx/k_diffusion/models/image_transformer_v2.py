@@ -607,6 +607,7 @@ class ShiftedWindowSelfAttentionBlock(nn.Module):
     def __init__(self, d_model, d_head, cond_features, window_size, window_shift, dropout=0.0):
         super().__init__()
         self.d_head = d_head
+        self.d_model = d_model
         self.n_heads = d_model // d_head
         self.window_size = window_size
         self.window_shift = window_shift
@@ -616,6 +617,7 @@ class ShiftedWindowSelfAttentionBlock(nn.Module):
         self.pos_emb = AxialRoPE(d_head // 2, self.n_heads)
         self.dropout = nn.Dropout(dropout)
         self.out_proj = apply_wd(zero_init(Linear(d_model, d_model, bias=False)))
+        self.fla = FocusedLinearAttention(d_model, (window_size,window_size),self.n_heads).cpu()
 
 
     def extra_repr(self):
@@ -623,14 +625,17 @@ class ShiftedWindowSelfAttentionBlock(nn.Module):
 
     def forward(self, x, pos, cond):
         skip = x
-        x = window(8,x)
+        x = window(self.window_size,x)
         a,b,c,d,e,f =(x.shape)
-        x = x.reshape(a*b*c,d*e,f)
-        
-        fla = FocusedLinearAttention(f, (8,8),self.n_heads).cuda()
+        x = x.reshape(a,b*c,d*e,f)
         x = self.norm(x, cond)
+        # raise ValueError(x.shape, cond.shape, y.shape)
+        x = x.reshape(a*b*c, d*e, f)
         
-        x = fla(x.squeeze())
+        try:
+            x = self.fla(x)
+        except:
+            raise ValueError(x.shape)
         
         x = x.reshape(a,b,c,d,e,f)
         x = x.permute(0,1,3,2,4,5)

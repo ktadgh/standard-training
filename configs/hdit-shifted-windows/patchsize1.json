@@ -1,17 +1,17 @@
 {
     "model": {
         "type": "image_transformer_v2",
-        "input_channels": 9,
+        "input_channels": 3,
                 "output_channels": 3,
         "input_size": [1024, 1024],
         "patch_size": [8, 8],
         "depths": [2, 2, 2, 2, 2],
         "widths": [128, 256, 384, 768, 1024],
         "self_attns": [
-            {"type": "shifted-window", "d_head": 64, "window_size": 8},
-            {"type": "shifted-window", "d_head": 64, "window_size": 8},
-                        {"type": "shifted-window", "d_head": 64, "window_size": 8},
-                        {"type": "shifted-window", "d_head": 64, "window_size": 8},
+            {"type": "shifted-window", "d_head": 64, "window_size": 32},
+            {"type": "shifted-window", "d_head": 64, "window_size": 32},
+                        {"type": "shifted-window", "d_head": 64, "window_size": 32},
+                        {"type": "shifted-window", "d_head": 64, "window_size": 16},
             {"type": "global", "d_head": 64}
         ],
         "loss_config": "karras",
