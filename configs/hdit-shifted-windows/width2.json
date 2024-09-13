@@ -8,10 +8,10 @@
         "depths": [2, 2, 2, 2, 2],
         "widths": [64,64, 128, 256, 384],
         "self_attns": [
-            {"type": "shifted-window", "d_head": 64, "window_size": 8},
-            {"type": "shifted-window", "d_head": 64, "window_size": 8},
-                        {"type": "shifted-window", "d_head": 64, "window_size": 8},
-                        {"type": "shifted-window", "d_head": 64, "window_size": 8},
+            {"type": "shifted-window", "d_head": 64, "window_size": 32},
+            {"type": "shifted-window", "d_head": 64, "window_size": 32},
+                        {"type": "shifted-window", "d_head": 64, "window_size": 32},
+                        {"type": "shifted-window", "d_head": 64, "window_size": 16},
             {"type": "global", "d_head": 64}
         ],
         "loss_config": "karras",
