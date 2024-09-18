@@ -13,6 +13,8 @@ import torch.nn.functional as F
 # MIN_B = -6924.0 
 # MAX_B = 5504.0
 
+max_depth = 1065353216.0
+max_normal = 255.0
 # def read_pos3d(filepath):
 
 #     dtype = np.dtype([
@@ -128,11 +130,10 @@ class AlignedDataset(BaseDataset):
         normal_path = self.normal_paths[index] 
         
         #depth = torch.load(depth_path) 
-        depth =  np.fromfile(depth_path, dtype='int32').reshape(1024, 1024)
-        normal = np.fromfile(normal_path, dtype='uint8', count=1024*1024*4).reshape(1024, 1024, -1)
+        depth =  np.fromfile(depth_path, dtype='int32').reshape(1024, 1024)/ max_depth
+        normal = np.fromfile(normal_path, dtype='float16', count=1024*1024*4).reshape(1024, 1024, -1)
 
-
-        assert os.path.basename(A_path).replace('-color.png','') == os.path.basename(B_path).replace('-color.png','') == os.path.basename(depth_path).replace('-depth.bin','')  == os.path.basename(normal_path).replace('-normal.bin','')
+        # assert os.path.basename(A_path).replace('-color.png','') == os.path.basename(B_path).replace('-color.png','') == os.path.basename(depth_path).replace('-depth.bin','')  == os.path.basename(normal_path).replace('-normal.bin','')
 
         number = int(os.path.basename(A_path).replace('-color.png',''))
 
@@ -161,6 +162,7 @@ class AlignedDataset(BaseDataset):
         else:
             q=q
 
+        p = A_tensor
         A_tensor = torch.cat((A_tensor, 
                               depth.reshape(1,1024,1024).to(A_tensor.dtype), 
                               normal[:,:,:3].permute(2,0,1).to(A_tensor.dtype)))

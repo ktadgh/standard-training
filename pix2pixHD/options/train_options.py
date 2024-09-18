@@ -46,5 +46,7 @@ class TrainOptions(BaseOptions):
         self.parser.add_argument('--teacher_adv', action='store_true')
         self.parser.add_argument('--teacher_feat', action='store_true')
         self.parser.add_argument('--teacher_vgg',action='store_true')
+        self.parser.add_argument('--alpha_temporal', type=float, default=0, help='distillation loss weight')
+        self.parser.add_argument('--delta_loss',action='store_true')
 
         self.isTrain = True

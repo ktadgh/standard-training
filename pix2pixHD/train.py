@@ -3,7 +3,7 @@ import os
 import numpy as np
 from options.train_options import TrainOptions
 from options.test_options import TestOptions
-from models.networks import DistillLoss
+from models.networks import DistillLoss, OFLoss
 from thop import profile
 
 import torch
@@ -34,8 +34,10 @@ import lpips
 import torch
 import re
 from tqdm import tqdm
+import wandb
 
-teacher_tested = False
+temp_loss = OFLoss()
+mse = torch.nn.MSELoss(size_average=True).cuda() 
 
 def dir_psnr(A, B):
     psnr = PeakSignalNoiseRatio(data_range =1.)
@@ -98,6 +100,8 @@ def dir_fid(A,B):
 
 
 opt = TrainOptions().parse()
+opt.serial_batches = True  # no shuffle
+opt.no_flip = True  # no flip
 # os.environ["CUDA_VISIBLE_DEVICES"] = opt.gpu_idss
 
 
@@ -170,11 +174,16 @@ args_to_remove = [
 
 ('--aim_repo', str(opt.aim_repo)),
 
+('--alpha_temporal', str(opt.alpha_temporal)),
+
+('--delta_loss', str(opt.delta_loss)),
+
 ]
 
 print(" args:", sys.argv)
 filtered_args = []
 skip_next = False
+
 
 for i, arg in enumerate(sys.argv):
     if skip_next:
@@ -191,7 +200,7 @@ for i, arg in enumerate(sys.argv):
         skip_next = True  # Skip the next value since it's part of the key-value pair to remove
     else:
         print(f'arg added = {arg}')
-        if arg not in ['--resume_distill_epoch', '--teacher_adv', '--teacher_feat', '--teacher_vgg', '--aim_repo']:
+        if arg not in ['--resume_distill_epoch', '--teacher_adv', '--teacher_feat', '--teacher_vgg', '--aim_repo', '--delta_loss']:
             filtered_args.append(arg)
 
 sys.argv = filtered_args
@@ -201,7 +210,7 @@ test_opt = TestOptions().parse(save=False)
 test_opt.no_flip=True
 test_opt.loadSize = 1024
 test_opt.fineSize = 1024
-test_opt.batchSize =1
+test_opt.batchSize =2
 test_opt.serial_batches = True
 test_opt.phase = 'val'
 
@@ -243,6 +252,7 @@ if opt.resume_distill_epoch != 0:
     )
 
 
+    # To load the string back
 
     g_checkpoint = torch.load(f'checkpoints/{opt.resume_repo}/epoch_{opt.resume_distill_epoch}_netG.pth', map_location = 'cuda:0')
     d_checkpoint = torch.load(f'checkpoints/{opt.resume_repo}/epoch_{opt.resume_distill_epoch}netD.pth', map_location = 'cuda:0')
@@ -257,7 +267,7 @@ if opt.resume_distill_epoch != 0:
     
     model.module.optimizer_G.load_state_dict(og_checkpoint)
     model.module.optimizer_D.load_state_dict(od_checkpoint)
-    new_start_epoch = opt.resume_distill_epoch+1
+    new_start_epoch = opt.resume_distill_epoch
 else:
     new_start_epoch = start_epoch
     run = Run(
@@ -267,12 +277,26 @@ else:
     )
 
 
+wandb.init(
+    # Set the project where this run will be logged
+
+    project="256-pix2pixHD",
+
+    # We pass a run name (otherwise it’ll be randomly assigned, like sunshine-lollypop-10)
+
+    name=opt.experiment_name,
+
+    # Track hyperparameters and run metadata
+
+    config={
+        "learning_rate": 0.02,
+    },
+
+    resume="allow")
 
 strings = {'aim_id': run.hash, 'repo': opt.aim_repo}
 torch.save(strings, f'checkpoints/{opt.name}/aim_strings.pth')
 
-
-# loading the teacher... 
 
 for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
     epoch_start_time = time.time()
@@ -280,8 +304,8 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
         epoch_iter = epoch_iter % dataset_size
     losses_G= 0
     losses_D= 0
-
-    
+    old_data = 0
+    old_model_data = 0
     for i, data in enumerate(dataset, start=epoch_iter):
         if total_steps % opt.print_freq == print_delta:
             iter_start_time = time.time()
@@ -291,7 +315,25 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
         # whether to collect output images
         save_fake = total_steps % opt.display_freq == display_delta
         
+        # with torch.no_grad():
+        #     teacher_image = teacher_model.module.netG(data['label'][:3].cuda())
 
+
+        labels = data['label']  # A list of tensors
+        images = data['image']  # A list of tensors
+
+        noisy_images = images + torch.randn_like(images)/math.sqrt(epoch)
+        # Use slicing and torch.cat to concatenate pairs
+        tensors = torch.cat([torch.cat([labels[:-1],labels[1:]], dim=1)], dim=0)
+
+        # Extract the previous elements for true_tensors
+        true_tensors = (images[1:])
+
+        data['image'] = true_tensors
+        data['label'] = tensors
+
+   
+   
         ############## Forward Pass ######################
         if i == 0:
             losses, generated = model.forward(Variable(data['label']), Variable(data['inst']), 
@@ -299,7 +341,7 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
                 teacher_feat = opt.teacher_feat,teacher_vgg = opt.teacher_vgg)
         else:
             losses, generated = model.forward(Variable(data['label']), Variable(data['inst']), 
-                Variable(data['image']), Variable(data['image']), Variable(data['feat']),infer=False, teacher_adv = opt.teacher_adv,
+                Variable(data['image']), Variable(data['image']), Variable(data['feat']),infer=True, teacher_adv = opt.teacher_adv,
                 teacher_feat = opt.teacher_feat,teacher_vgg = opt.teacher_vgg)       
 
         # sum per device losses
@@ -311,11 +353,50 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
         loss_G = loss_dict['G_GAN'] + loss_dict.get('G_GAN_Feat',0) + loss_dict.get('G_VGG',0)
         distloss = 0
         _ = model.module.netG(data['label'].cuda())
+
         # distloss = opt.alpha1*dloss1(data['label'], run, whitening= False) + opt.alpha2*dloss2(data['label'], run, whitening= False) + opt.alpha3*dloss3(data['label'], run, whitening= False)
         # + opt.alpha4*dloss4(data['label'], run, whitening= False) + opt.alpha5*dloss5(data['label'], run, whitening= False)
         # # sum = (model.module.netG.alpha1+model.module.netG.alpha2+model.module.netG.alpha3+model.module.netG.alpha4+model.module.netG.alpha5)
         # loss_G += ( distloss.squeeze() )* opt.alpha
 
+
+        ###### Temporal Loss #######
+        gt2 = images[2:]
+        gt1 = images[1:-1]
+
+        model_data = model.module.netG(data['label'].cuda())
+
+        im1 = model_data[1:].detach()
+        im2 = model_data[:-1]
+
+        # if i == 0:
+        #     gen1 = wandb.Image(util.tensor2im(im1[0].detach()),step=epoch)
+        #     gen2 = wandb.Image(util.tensor2im(im2[0].detach()),step=epoch)
+
+        #     real1 = wandb.Image(util.tensor2im(gt1[0].detach()),step=epoch)
+        #     real2 = wandb.Image(util.tensor2im(gt2[0].detach()),step=epoch)
+
+
+        #     wandb.log({"generated 1": gen1},step=epoch)
+        #     wandb.log({"generated 2": gen2},step=epoch)
+        #     wandb.log({"real 1": real1},step=epoch)
+        #     wandb.log({"real 2": real2},step=epoch)
+
+        if opt.alpha_temporal != 0:
+            if opt.delta_loss:
+                delta_im = im2 - im1
+                delta_gt = gt2 - gt1
+                tl = mse(delta_im.cuda(), delta_gt.cuda())
+            else:
+                if i == 0:
+                    tl = temp_loss(im1,im2,gt1,gt2, None)
+                else:
+                    tl = temp_loss(im1,im2,gt1,gt2, None)
+
+            loss_G += tl*opt.alpha_temporal
+
+
+        ############### Backward Pass ####################
         optimizer_G.zero_grad()
         loss_G.backward()
         optimizer_G.step()
@@ -324,10 +405,6 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
         optimizer_D.step()    
         losses_G = 0    
         losses_D = 0
-
-
-        ############### Backward Pass ####################
-        # update generator weights
 
 
 
@@ -345,10 +422,23 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
             gen1 = Image(util.tensor2im(generated.data[0]))
             real1 = Image(util.tensor2im(data['image'][0]))
             inp1 = Image(util.tensor2im(data['label'][0]))
+            # t1 = Image(util.tensor2im(teacher_image[0]))
 
             run.track(gen1, name = 'generated image')
             run.track(real1, name = 'real image')
             run.track(inp1, name = 'input image')
+
+            gen1 = wandb.Image(util.tensor2im(generated.data[0]))
+            real1 = wandb.Image(util.tensor2im(data['image'][0]))
+            inp1 = wandb.Image(util.tensor2im(data['label'][0][:3]))
+            depth = wandb.Image(util.tensor2im(data['label'][0][4]))
+            normal = wandb.Image(util.tensor2im(data['label'][0][4:]*0.5 + 0.5))
+
+            wandb.log({"generated image": gen1},step=epoch)
+            wandb.log({"real image": real1},step=epoch)
+            wandb.log({"input image": inp1},step=epoch)
+            wandb.log({"depth": inp1},step=epoch)
+            wandb.log({"normal": inp1},step=epoch)
 
             # tracking metrics with AIM
             run.track(loss_D.detach(), name = 'Disriminator loss')
@@ -372,23 +462,38 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
 
         os.makedirs('fake', exist_ok=True)
         os.makedirs('real', exist_ok=True)
+        os.makedirs('pregen', exist_ok=True)
         os.makedirs(f'fake/{opt.experiment_name}', exist_ok=True)
         os.makedirs(f'real/{opt.experiment_name}', exist_ok=True)
+        os.makedirs(f'pregen/{opt.experiment_name}', exist_ok=True)
 
         model = model.eval()
+        generated = torch.zeros(1,3,1024,1024).cuda()
         for i, data in tqdm(enumerate(test_dataset)):   
             if i > 2000:
                 break
-            ############## Forward Pass ######################
-            with torch.no_grad():
-                losses, generated = model.forward(Variable(data['label']), Variable(data['inst']), 
-                    Variable(data['image']), Variable(data['image']), Variable(data['feat']),infer=True)
-                gen1 = (util.tensor2im(generated.data[0]))
-                real1 = (util.tensor2im(data['image'][0]))
+            if i <= 1:
+                labels = data['label']  # A list of tensors
+                images = data['image']  # A list of tensors
+
+                tensors = torch.cat([torch.cat([labels[:-1],labels[1:]], dim=1)], dim=0)
+                with torch.no_grad():
+                    generated = model.module.netG(tensors.cuda())
+
+            else:
+                labels = data['label'].cuda()  # A list of tensors
+                images = data['image']  # A list of tensors
+
+                tensors = torch.cat([torch.cat([labels[:-1], labels[1:]], dim=1)], dim=0)
+                gen1 = (util.tensor2im(generated[0]))
+                cv2.imwrite(f'pregen/{opt.experiment_name}/{i}.png', gen1[:,:,::-1])
+
+                with torch.no_grad():
+                    generated = model.module.netG(tensors.cuda())
+                gen1 = (util.tensor2im(generated[0]))
+                real1 = (util.tensor2im(data['image'][1].squeeze()))
                 cv2.imwrite(f'fake/{opt.experiment_name}/{i}.png', gen1[:,:,::-1])
                 cv2.imwrite(f'real/{opt.experiment_name}/{i}.png', real1[:,:,::-1])
-
-
 
         del gen1
         del real1
@@ -405,8 +510,10 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
         run.track(tpsnr, name='tPSNR')
         run.track(fid, name = 'FID')
         run.track(lpipzz, name = 'LPIPS')
+        
+        wandb.log({"PSNR": psnr, "tPSNR": tpsnr, "FID":fid, "LPIPS": lpipzz},step=epoch)
 
-            
+
     ### instead of only training the local enhancer, train the entire network after certain iterations
     if (opt.niter_fix_global != 0) and (epoch == opt.niter_fix_global):
         model.module.update_fixed_params()

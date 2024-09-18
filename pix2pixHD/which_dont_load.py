@@ -63,9 +63,9 @@ normal_max = -1e-15
 depth_max = -1e15
 color_max = -1e15
 
-
+j = 0
 for i, data in tqdm(enumerate(dataset)):
-
+    j += 1
     # raise ValueError(data)
     # data should have the pattern 
     color_input = data['label'][:,:3,:,:]
@@ -87,6 +87,8 @@ for i, data in tqdm(enumerate(dataset)):
     if normal.max() > normal_max:
         normal_max = normal.max()
 
+    if j > 10:
+        break
 print(f'Normal min = {normal_min}, Normal max = {normal_max}')
 print(f'Depth min = {depth_min}, Depth max = {depth_max}')
 print(f'Color min = {color_min}, Color max = {color_max}')

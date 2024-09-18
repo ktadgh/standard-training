@@ -4,6 +4,9 @@ import functools
 from torch.autograd import Variable
 import numpy as np
 import k_diffusion as K
+import sys
+sys.path.append('/home/ubuntu/tdist-flat')
+from flownet.models1 import FlowNet2
 
 ###############################################################################
 # Functions
@@ -295,7 +298,7 @@ class MultiscaleDiscriminator(nn.Module):
         self.num_D = num_D
         self.n_layers = n_layers
         self.getIntermFeat = getIntermFeat
-        input_nc = 6
+        input_nc = 17
         for i in range(num_D):
             netD = NLayerDiscriminator(input_nc, ndf, n_layers, norm_layer, use_sigmoid, getIntermFeat)
             if getIntermFeat:                                
@@ -550,3 +553,83 @@ class DistillLossNoPool(torch.nn.Module):
         return loss
 
 
+class OFLoss(torch.nn.Module):
+    
+    def __init__(self):
+        super().__init__()
+        # self.camera_matrix = torch.load('camera_matrix.pth').cuda()
+        self.criterion = nn.MSELoss(size_average=True)
+
+        class Args:
+            def __init__(self, dictionary):
+                for key in dictionary:
+                    setattr(self, key, dictionary[key])
+
+        args_dict = {
+            "fp16": False,
+            "rgb_max": 1.
+        }
+
+
+        # Convert the dictionary to an object
+        args = Args(args_dict)
+
+        self.flownet = FlowNet2(args).cuda()
+        chkpt=torch.load('/home/ubuntu/FlowNet2_checkpoint.pth.tar')
+        self.flownet.load_state_dict(chkpt['state_dict'])
+        self.flownet = self.flownet.eval()
+        self.flownet.requires_grad=False
+        self.flownet = self.flownet.to('cuda:0')
+
+
+    def forward(self,im1,im2, gt1,gt2, run = None, device = 'cuda'):
+        # im1 = torch.rand(1,3,1024,1024).cuda()
+        # im2 = torch.rand(1,3,1024,1024).cuda()
+        # gt1 = torch.rand(1,3,1024,1024).cuda()
+        # gt2 = torch.rand(1,3,1024,1024).cuda()
+        # with profile(activities=[ProfilerActivity.CPU,ProfilerActivity.CUDA], record_shapes=True) as prof:
+        flow_warping = Resample2d().to(device)
+        input = torch.stack([gt2, gt1],dim =2)
+
+        try:
+            flow_i21 = (self.flownet(input.to('cuda:0'))) # flow from model input1 to 2
+        except:
+            raise ValueError(input.shape)
+                
+        gt1 = gt1.to('cuda:0')
+        flow_i21 = flow_i21.to('cuda:0')
+        with record_function("flow_warping"):
+            warp_i1 = flow_warping(gt1, flow_i21)# flow warped gt
+
+        if run is not None:
+            warped_im = (warp_i1[0]+1)*0.5
+            warped_im = (warped_im*255).detach().permute(1,2,0).cpu().numpy().astype(np.uint8)
+            image = Image(warped_im)
+            run.track(image, name='warped_im')
+
+            gt1_im = (gt1[0]+1)*0.5
+            gt1_im = (gt1_im*255).detach().permute(1,2,0).cpu().numpy().astype(np.uint8)
+            image = Image(gt1_im)
+            run.track(image, name='Ground Truth 1')
+
+            gt2_im = (gt2[0]+1)*0.5
+            gt2_im = (gt2_im*255).detach().permute(1,2,0).cpu().numpy().astype(np.uint8)
+            image = Image(gt2_im)
+            run.track(image, name='Ground Truth 2')
+
+
+        diff = gt2.to('cuda:0') - warp_i1.to('cuda:0')
+        sumdiff = torch.sum(diff, dim=1)
+        summdiff2 = sumdiff.pow(2)
+        mask = torch.exp(-50.0 * summdiff2).unsqueeze(1).cpu().to('cuda:0')
+        
+        if run is not None:
+            mask_im = mask[0].squeeze()
+            mask_im = (mask_im*255).detach().cpu().numpy().astype(np.uint8)
+            mask_im = Image(mask_im)
+            run.track(mask_im, name='mask')
+
+                    
+        warp_o1 = flow_warping(im1.to('cuda:0'), flow_i21.to('cuda:0')) # flow warped model output
+
+        return  self.criterion(im2 * mask, warp_o1.to(device) * mask).to(device)

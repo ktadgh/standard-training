@@ -97,6 +97,7 @@ def dir_fid(A,B):
 
 
 opt = TrainOptions().parse()
+opt.no_flip = True
 opt.serial_batches = True
 # os.environ["CUDA_VISIBLE_DEVICES"] = opt.gpu_idss
 
@@ -303,8 +304,6 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
     losses_D= 0
 
     for i, data in enumerate(dataset, start=epoch_iter):
-
-        
 
         if total_steps % opt.print_freq == print_delta:
             iter_start_time = time.time()
