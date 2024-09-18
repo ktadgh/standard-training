@@ -37,6 +37,7 @@ from tqdm import tqdm
 
 
 opt = TrainOptions().parse()
+opt.serial_batches = True
 
 
 iter_path = os.path.join(opt.checkpoints_dir, opt.name, 'iter.txt')
@@ -54,7 +55,38 @@ print('#training images = %d' % dataset_size)
 filtered_args = []
 skip_next = False
 
+color_min = 1e15
+depth_min = 1e15
+normal_min = 1e15
 
-    
-for i, data in enumerate(dataset):
-    print(i)
+normal_max = -1e-15
+depth_max = -1e15
+color_max = -1e15
+
+
+for i, data in tqdm(enumerate(dataset)):
+
+    # raise ValueError(data)
+    # data should have the pattern 
+    color_input = data['label'][:,:3,:,:]
+    depth = data['label'][:,3:4,:,:]
+    normal = data['label'][:,4:,:,:]
+
+    if color_input.min() < color_min:
+        color_min = color_input.min()
+    if color_input.max() > color_max:
+        color_max = color_input.max()
+
+    if depth.min() < depth_min:
+        depth_min = depth.min()
+    if depth.max() > depth_max:
+        depth_max = depth.max()
+
+    if normal.min() < normal_min:
+        normal_min = normal.min()
+    if normal.max() > normal_max:
+        normal_max = normal.max()
+
+print(f'Normal min = {normal_min}, Normal max = {normal_max}')
+print(f'Depth min = {depth_min}, Depth max = {depth_max}')
+print(f'Color min = {color_min}, Color max = {color_max}')

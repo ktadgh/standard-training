@@ -10,7 +10,7 @@ import os
 
 IMG_EXTENSIONS = [
     '.jpg', '.JPG', '.jpeg', '.JPEG',
-    '.png', '.PNG', '.ppm', '.PPM', '.bmp', '.BMP', '.tiff','Data'
+    '.png', '.PNG', '.ppm', '.PPM', '.bmp', '.BMP', '.tiff','Data', '.bin'
 ]
 
 
@@ -28,6 +28,8 @@ def make_dataset(dir):
             if is_image_file(fname):
                 path = os.path.join(root, fname)
                 images.append(path)
+            else:
+                raise ValueError(fname)
 
     return images
 

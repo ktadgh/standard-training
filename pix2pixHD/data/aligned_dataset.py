@@ -56,21 +56,21 @@ class AlignedDataset(BaseDataset):
 
         ### input A (label maps)
         dir_A = '_A' if self.opt.label_nc == 0 else '_label'
-        self.dir_A = "/home/ubuntu/utah/692024_1_50001/UE" #os.path.join(opt.dataroot, opt.phase + dir_A)
+        self.dir_A = "/home/ubuntu/utah/1780_dataset/1780_Dataset_Input/" #os.path.join(opt.dataroot, opt.phase + dir_A)
         self.A_paths = sorted(make_dataset(self.dir_A))
 
         ### input B (real images)
         if opt.isTrain or opt.use_encoded_image:
             dir_B = '_B' if self.opt.label_nc == 0 else '_img'
-            self.dir_B = "/home/ubuntu/utah/NEWDATASET/692024_1_50001/UE"#os.path.join(opt.dataroot, opt.phase + dir_B)  
+            self.dir_B = "/home/ubuntu/utah/1780_dataset/1780_Dataset_Target/"#os.path.join(opt.dataroot, opt.phase + dir_B)  
             self.B_paths = sorted(make_dataset(self.dir_B))
 
         ### Depth
-        self.dir_depth = "/home/ubuntu/utah/NEWDATASET/692024_1_50001/Depths"#os.path.join(opt.dataroot, "PCOData")  
+        self.dir_depth = "/home/ubuntu/utah/1780_dataset/Depths/"#os.path.join(opt.dataroot, "PCOData")  
         self.depth_paths = sorted(make_dataset(self.dir_depth))
 
         ### Normal
-        self.dir_normal = "/home/ubuntu/utah/NEWDATASET/692024_1_50001/Normals"#os.path.join(opt.dataroot, "Normal")  
+        self.dir_normal = "/home/ubuntu/utah/1780_dataset/Normals/"#os.path.join(opt.dataroot, "Normal")  
         self.normal_paths = sorted(make_dataset(self.dir_normal))
 
         if opt.isTrain:
@@ -80,10 +80,15 @@ class AlignedDataset(BaseDataset):
         assert len(self.A_paths) == len(self.normal_paths), f"{len(self.A_paths)}_{len(self.normal_paths)}"
 
         
-        assert [f.split('/')[-1].split('_')[0] for f in self.A_paths] == [f.split('/')[-1].split('_')[0] for f in self.depth_paths], "images and depths do not match"
-        assert [f.split('/')[-1].split('_')[0] for f in self.A_paths] == [f.split('/')[-1].split('_')[0] for f in self.normal_paths], "images and 3dworld do not match"
+        assert [f.split('/')[-1].split('-')[0] for f in self.A_paths] == [f.split('/')[-1].split('-')[0] for f in self.depth_paths], "images and depths do not match"
+        assert [f.split('/')[-1].split('-')[0] for f in self.A_paths] == [f.split('/')[-1].split('-')[0] for f in self.normal_paths], "images and normals do not match"
+
+
         if opt.isTrain:
-            assert [f.split('/')[-1].split('_')[0] for f in self.A_paths] == [f.split('/')[-1].split('_')[0] for f in self.B_paths], "images and point cloud do not match"
+            for i in range(len(self.A_paths)):
+                assert self.A_paths[i].split('/')[-1].split('-')[0] == self.B_paths[i].split('/')[-1].split('-')[0], f"images and point cloud do not match, {self.B_paths[i].split('/')[-1].split('-')[0][0], self.A_paths[i].split('/')[-1].split('-')[0]}, i = {i}"
+
+            # assert [f.split('/')[-1].split('-')[0] for f in self.A_paths] == [f.split('/')[-1].split('-')[0] for f in self.B_paths], f"images and point cloud do not match, {[f.split('/')[-1].split('-')[0] for f in self.A_paths][0], [f.split('/')[-1].split('-')[0] for f in self.B_paths][0]}"
 
         ### instance maps
         if not opt.no_instance:
@@ -100,7 +105,7 @@ class AlignedDataset(BaseDataset):
       
     def __getitem__(self, index):        
         ### input A (label maps)
-        A_path = self.A_paths[index]              
+        A_path = self.A_paths[index] 
         A = Image.open(A_path)        
         params = get_params(self.opt, A.size)
         if self.opt.label_nc == 0:
@@ -127,9 +132,9 @@ class AlignedDataset(BaseDataset):
         normal = np.fromfile(normal_path, dtype='uint8', count=1024*1024*4).reshape(1024, 1024, -1)
 
 
-        assert os.path.basename(A_path).replace('_Color.png','') == os.path.basename(B_path).replace('_Color.png','') == os.path.basename(depth_path).replace('_Depth.bin','')  == os.path.basename(normal_path).replace('_Normal.bin','')
+        assert os.path.basename(A_path).replace('-color.png','') == os.path.basename(B_path).replace('-color.png','') == os.path.basename(depth_path).replace('-depth.bin','')  == os.path.basename(normal_path).replace('-normal.bin','')
 
-        number = int(os.path.basename(A_path).replace('_Color.png',''))
+        number = int(os.path.basename(A_path).replace('-color.png',''))
 
         if self.opt.label_nc == 0:
             #transform_depth = get_transform(self.opt, params, normalize=False)

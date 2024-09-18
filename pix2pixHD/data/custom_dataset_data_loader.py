@@ -12,15 +12,16 @@ def CreateDataset(opt):
     dataset.initialize(opt)
     return dataset
 
-def collate(batch, dataset):
+def collate(dataset, batch):
     # recursively checks if the image numbers are in order, if not calls itself on a new batch
-
     numbers = [data['number'] for data in batch]
     if all(numbers[i] + 1 == numbers[i + 1] for i in range(len(numbers) - 1)):
         return torch.utils.data.dataloader.default_collate(batch)
+
     else:
-        replacement_batch = [dataset[random.randint(0, len(dataset)-1)] for _ in range(len(batch))]
-        return collate(replacement_batch, dataset)
+        start = random.randint(0, len(dataset) -1 - len(batch))
+        replacement_batch = [dataset[start + i] for i in range(len(batch))]
+        return collate(dataset, replacement_batch)
 
 class CustomDatasetDataLoader(BaseDataLoader):
     def name(self):
@@ -30,10 +31,9 @@ class CustomDatasetDataLoader(BaseDataLoader):
         BaseDataLoader.initialize(self, opt)
         self.dataset = CreateDataset(opt)
         self.collate_fn = functools.partial(collate, self.dataset)
-
         self.dataloader = torch.utils.data.DataLoader(
             self.dataset,
-            collate_fn=self.collate_fn
+            # collate_fn=self.collate_fn,
             batch_size=opt.batchSize,
             shuffle=not opt.serial_batches,
             num_workers=int(opt.nThreads))
