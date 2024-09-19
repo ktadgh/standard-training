@@ -4,6 +4,8 @@ import functools
 from torch.autograd import Variable
 import numpy as np
 import k_diffusion as K
+from resample2d import Resample2d
+
 import sys
 sys.path.append('/home/ubuntu/tdist-flat')
 from flownet.models1 import FlowNet2
@@ -598,8 +600,7 @@ class OFLoss(torch.nn.Module):
                 
         gt1 = gt1.to('cuda:0')
         flow_i21 = flow_i21.to('cuda:0')
-        with record_function("flow_warping"):
-            warp_i1 = flow_warping(gt1, flow_i21)# flow warped gt
+        warp_i1 = flow_warping(gt1, flow_i21)# flow warped gt
 
         if run is not None:
             warped_im = (warp_i1[0]+1)*0.5

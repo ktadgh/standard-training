@@ -280,7 +280,7 @@ else:
 wandb.init(
     # Set the project where this run will be logged
 
-    project="256-pix2pixHD",
+    project="1024-lit8-18-09",
 
     # We pass a run name (otherwise it’ll be randomly assigned, like sunshine-lollypop-10)
 
@@ -306,7 +306,10 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
     losses_D= 0
     old_data = 0
     old_model_data = 0
+
+    j = 0
     for i, data in enumerate(dataset, start=epoch_iter):
+        j +=1 
         if total_steps % opt.print_freq == print_delta:
             iter_start_time = time.time()
         total_steps += opt.batchSize
@@ -335,7 +338,7 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
    
    
         ############## Forward Pass ######################
-        if i == 0:
+        if j == 0:
             losses, generated = model.forward(Variable(data['label']), Variable(data['inst']), 
                 Variable(data['image']),Variable(data['image']), Variable(data['feat']),infer=True, teacher_adv = opt.teacher_adv,
                 teacher_feat = opt.teacher_feat,teacher_vgg = opt.teacher_vgg)
@@ -418,7 +421,7 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
             #call(["nvidia-smi", "--format=csv", "--query-gpu=memory.used,memory.free"]) 
 
 
-        if i ==0:
+        if j ==0:
             gen1 = Image(util.tensor2im(generated.data[0]))
             real1 = Image(util.tensor2im(data['image'][0]))
             inp1 = Image(util.tensor2im(data['label'][0]))
@@ -431,14 +434,35 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
             gen1 = wandb.Image(util.tensor2im(generated.data[0]))
             real1 = wandb.Image(util.tensor2im(data['image'][0]))
             inp1 = wandb.Image(util.tensor2im(data['label'][0][:3]))
-            depth = wandb.Image(util.tensor2im(data['label'][0][4]))
-            normal = wandb.Image(util.tensor2im(data['label'][0][4:]*0.5 + 0.5))
+            # raise ValueError(data['label'].shape)
+            depth1 = wandb.Image((data['label'][0,3]))
+            
+            normal1 = wandb.Image((data['label'][0,4:7]*0.5 + 0.5))
 
-            wandb.log({"generated image": gen1},step=epoch)
-            wandb.log({"real image": real1},step=epoch)
-            wandb.log({"input image": inp1},step=epoch)
-            wandb.log({"depth": inp1},step=epoch)
-            wandb.log({"normal": inp1},step=epoch)
+            inp2 = wandb.Image(util.tensor2im(data['label'][0,7:10]))
+            depth2 = wandb.Image((data['label'][0,10]))
+            normal2 = wandb.Image(util.tensor2im(data['label'][0,11:14]*0.5 + 0.5))
+
+            try:
+                wandb.log({"generated image": gen1},step=epoch)
+                wandb.log({"real image": real1},step=epoch)
+                wandb.log({"input image": inp1},step=epoch)
+                wandb.log({"depth": depth1},step=epoch)
+                wandb.log({"normal": normal1},step=epoch)
+
+                wandb.log({"input image 2": inp2},step=epoch)
+                wandb.log({"depth 2": depth2},step=epoch)
+                wandb.log({"normal 2": normal2},step=epoch)
+            
+            except:
+                pass
+
+            run.track(depth1, name = "Depth 1",step=epoch)
+            run.track(normal1, name = "Normal 1",step=epoch)
+
+            run.track(inp2, name = "Input 2",step=epoch)
+            run.track(depth2, name = "Depth 2",step=epoch)
+            run.track(normal2, name = "Normal 2",step=epoch)
 
             # tracking metrics with AIM
             run.track(loss_D.detach(), name = 'Disriminator loss')
@@ -510,8 +534,11 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
         run.track(tpsnr, name='tPSNR')
         run.track(fid, name = 'FID')
         run.track(lpipzz, name = 'LPIPS')
-        
-        wandb.log({"PSNR": psnr, "tPSNR": tpsnr, "FID":fid, "LPIPS": lpipzz},step=epoch)
+
+        try:
+            wandb.log({"PSNR": psnr, "tPSNR": tpsnr, "FID":fid, "LPIPS": lpipzz},step=epoch)
+        except:
+            pass
 
 
     ### instead of only training the local enhancer, train the entire network after certain iterations
