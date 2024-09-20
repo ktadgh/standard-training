@@ -210,7 +210,7 @@ test_opt = TestOptions().parse(save=False)
 test_opt.no_flip=True
 test_opt.loadSize = 1024
 test_opt.fineSize = 1024
-test_opt.batchSize =2
+test_opt.batchSize =1
 test_opt.serial_batches = True
 test_opt.phase = 'val'
 
@@ -219,6 +219,7 @@ test_data_loader = CreateDataLoader(test_opt)
 
 test_dataset = test_data_loader.load_data()
 test_dataset_size = len(test_dataset)
+from torch.profiler import profile, record_function, ProfilerActivity
 
 visualizer = Visualizer(opt)
 if opt.fp16:    
@@ -308,7 +309,9 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
     old_model_data = 0
 
     j = 0
-    for i, data in enumerate(dataset, start=epoch_iter):
+    # with profile(activities=[ProfilerActivity.CPU,ProfilerActivity.CUDA], record_shapes=True) as prof:  
+    for i, data in enumerate(tqdm(dataset),start=epoch_iter):
+        break
         j +=1 
         if total_steps % opt.print_freq == print_delta:
             iter_start_time = time.time()
@@ -321,11 +324,11 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
         # with torch.no_grad():
         #     teacher_image = teacher_model.module.netG(data['label'][:3].cuda())
 
+        # with record_function("data_processing"):
 
         labels = data['label']  # A list of tensors
         images = data['image']  # A list of tensors
 
-        noisy_images = images + torch.randn_like(images)/math.sqrt(epoch)
         # Use slicing and torch.cat to concatenate pairs
         tensors = torch.cat([torch.cat([labels[:-1],labels[1:]], dim=1)], dim=0)
 
@@ -335,9 +338,10 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
         data['image'] = true_tensors
         data['label'] = tensors
 
-   
-   
-        ############## Forward Pass ######################
+
+
+        # with record_function("forward_pass"):
+            ############## Forward Pass ######################
         if j == 0:
             losses, generated = model.forward(Variable(data['label']), Variable(data['inst']), 
                 Variable(data['image']),Variable(data['image']), Variable(data['feat']),infer=True, teacher_adv = opt.teacher_adv,
@@ -351,11 +355,12 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
         losses = [ torch.mean(x) if not isinstance(x, int) else x for x in losses ]
         loss_dict = dict(zip(model.module.loss_names, losses))
 
+
         # calculate final loss scalar
         loss_D = (loss_dict['D_fake'] + loss_dict['D_real']) * 0.5
         loss_G = loss_dict['G_GAN'] + loss_dict.get('G_GAN_Feat',0) + loss_dict.get('G_VGG',0)
         distloss = 0
-        _ = model.module.netG(data['label'].cuda())
+        # _ = model.module.netG(data['label'].cuda())
 
         # distloss = opt.alpha1*dloss1(data['label'], run, whitening= False) + opt.alpha2*dloss2(data['label'], run, whitening= False) + opt.alpha3*dloss3(data['label'], run, whitening= False)
         # + opt.alpha4*dloss4(data['label'], run, whitening= False) + opt.alpha5*dloss5(data['label'], run, whitening= False)
@@ -493,29 +498,36 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
 
         model = model.eval()
         generated = torch.zeros(1,3,1024,1024).cuda()
+
+        previous_label = torch.zeros(1,14,1024,1024).cuda()
         for i, data in tqdm(enumerate(test_dataset)):   
             if i > 2000:
                 break
+            if i == 0:
+                previous_label = data['label'].cuda()
             if i <= 1:
-                labels = data['label']  # A list of tensors
-                images = data['image']  # A list of tensors
+                labels = data['label'].cuda()  # A list of tensors
+                images = data['image'].cuda()  # A list of tensors
 
-                tensors = torch.cat([torch.cat([labels[:-1],labels[1:]], dim=1)], dim=0)
+                tensors = torch.cat([torch.cat([previous_label,labels], dim=1)], dim=0)
+
+                previous_label = labels
                 with torch.no_grad():
                     generated = model.module.netG(tensors.cuda())
 
             else:
                 labels = data['label'].cuda()  # A list of tensors
-                images = data['image']  # A list of tensors
+                images = data['image'].cuda()  # A list of tensors
 
-                tensors = torch.cat([torch.cat([labels[:-1], labels[1:]], dim=1)], dim=0)
+                tensors = torch.cat([torch.cat([previous_label, labels], dim=1)], dim=0)
+                previous_label = labels
                 gen1 = (util.tensor2im(generated[0]))
                 cv2.imwrite(f'pregen/{opt.experiment_name}/{i}.png', gen1[:,:,::-1])
 
                 with torch.no_grad():
                     generated = model.module.netG(tensors.cuda())
                 gen1 = (util.tensor2im(generated[0]))
-                real1 = (util.tensor2im(data['image'][1].squeeze()))
+                real1 = (util.tensor2im(data['image'][0].squeeze()))
                 cv2.imwrite(f'fake/{opt.experiment_name}/{i}.png', gen1[:,:,::-1])
                 cv2.imwrite(f'real/{opt.experiment_name}/{i}.png', real1[:,:,::-1])
 

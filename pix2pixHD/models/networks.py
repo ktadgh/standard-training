@@ -300,7 +300,7 @@ class MultiscaleDiscriminator(nn.Module):
         self.num_D = num_D
         self.n_layers = n_layers
         self.getIntermFeat = getIntermFeat
-        input_nc = 17
+        input_nc = 6
         for i in range(num_D):
             netD = NLayerDiscriminator(input_nc, ndf, n_layers, norm_layer, use_sigmoid, getIntermFeat)
             if getIntermFeat:                                
@@ -622,7 +622,7 @@ class OFLoss(torch.nn.Module):
         diff = gt2.to('cuda:0') - warp_i1.to('cuda:0')
         sumdiff = torch.sum(diff, dim=1)
         summdiff2 = sumdiff.pow(2)
-        mask = torch.exp(-50.0 * summdiff2).unsqueeze(1).cpu().to('cuda:0')
+        mask = torch.exp(-50.0 * summdiff2).unsqueeze(1).to('cuda:0')
         
         if run is not None:
             mask_im = mask[0].squeeze()
