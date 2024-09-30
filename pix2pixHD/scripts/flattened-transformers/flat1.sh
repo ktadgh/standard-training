@@ -1,0 +1,1 @@
+python train_standard.py --name flat-og-32-max-4 --no_flip --nThreads 12 --resume_distill_epoch 10 --alpha 1e-14 --niter 100 --niter_decay 100 --save_epoch_freq 1 --dataroot "../../images" --batchSize 2 --label_nc 0 --no_instance --gpu_ids 0 --loadSize 1024 --config_path /home/ubuntu/tdist-flat/configs/flat-transformers/og-max-32.json --experiment_name flat-og-32-max-4

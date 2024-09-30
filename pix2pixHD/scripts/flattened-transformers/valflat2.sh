@@ -1,0 +1,2 @@
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+/home/ubuntu/tdist-flat/tdist-regular/bin/python val_standard.py --name og-reg-4 --no_flip --nThreads 12 --resume_distill_epoch 30 --alpha 1e-14 --niter 31 --niter_decay 0 --save_epoch_freq 1 --dataroot "../../images" --batchSize 1 --label_nc 0 --no_instance --gpu_ids 0 --loadSize 1024 --config_path /home/ubuntu/tdist-flat/configs/hdit_shifted_window.json --experiment_name og-reg-4
