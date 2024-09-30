@@ -178,6 +178,8 @@ args_to_remove = [
 
 ('--delta_loss', str(opt.delta_loss)),
 
+('--accum_iter', str(opt.accum_iter)),
+
 ]
 
 print(" args:", sys.argv)
@@ -308,10 +310,9 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
     old_data = 0
     old_model_data = 0
 
-    j = 0
+    j = -1
     # with profile(activities=[ProfilerActivity.CPU,ProfilerActivity.CUDA], record_shapes=True) as prof:  
     for i, data in enumerate(tqdm(dataset),start=epoch_iter):
-        break
         j +=1 
         if total_steps % opt.print_freq == print_delta:
             iter_start_time = time.time()
@@ -337,8 +338,6 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
 
         data['image'] = true_tensors
         data['label'] = tensors
-
-
 
         # with record_function("forward_pass"):
             ############## Forward Pass ######################
@@ -374,21 +373,8 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
 
         model_data = model.module.netG(data['label'].cuda())
 
-        im1 = model_data[1:].detach()
-        im2 = model_data[:-1]
-
-        # if i == 0:
-        #     gen1 = wandb.Image(util.tensor2im(im1[0].detach()),step=epoch)
-        #     gen2 = wandb.Image(util.tensor2im(im2[0].detach()),step=epoch)
-
-        #     real1 = wandb.Image(util.tensor2im(gt1[0].detach()),step=epoch)
-        #     real2 = wandb.Image(util.tensor2im(gt2[0].detach()),step=epoch)
-
-
-        #     wandb.log({"generated 1": gen1},step=epoch)
-        #     wandb.log({"generated 2": gen2},step=epoch)
-        #     wandb.log({"real 1": real1},step=epoch)
-        #     wandb.log({"real 2": real2},step=epoch)
+        im1 = model_data[:-1].detach()
+        im2 = model_data[1:]
 
         if opt.alpha_temporal != 0:
             if opt.delta_loss:
@@ -396,23 +382,30 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
                 delta_gt = gt2 - gt1
                 tl = mse(delta_im.cuda(), delta_gt.cuda())
             else:
-                if i == 0:
-                    tl = temp_loss(im1,im2,gt1,gt2, None)
+                if j == 0:
+                    tl = temp_loss(im1,im2,gt1,gt2, run)
                 else:
-                    tl = temp_loss(im1,im2,gt1,gt2, None)
+                    tl = temp_loss(im1,im2,gt1,gt2, run)
 
             loss_G += tl*opt.alpha_temporal
 
 
         ############### Backward Pass ####################
-        optimizer_G.zero_grad()
+        model.module.netD.requires_grad_(False)
         loss_G.backward()
-        optimizer_G.step()
-        optimizer_D.zero_grad()
+        model.module.netD.requires_grad_(True)
+
+        if j % opt.accum_iter == 0:
+            optimizer_G.step()
+            optimizer_G.zero_grad()
+
+        model.module.netG.requires_grad_(False)
         loss_D.backward()
-        optimizer_D.step()    
-        losses_G = 0    
-        losses_D = 0
+        model.module.netG.requires_grad_(True)
+
+        if j % opt.accum_iter == 0:
+            optimizer_D.step()
+            optimizer_D.zero_grad()  
 
 
 
@@ -461,6 +454,18 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
             
             except:
                 pass
+
+            gen1 = Image(util.tensor2im(generated.data[0]))
+            real1 = Image(util.tensor2im(data['image'][0]))
+            inp1 = Image(util.tensor2im(data['label'][0][:3]))
+            # raise ValueError(data['label'].shape)
+            depth1 = Image((data['label'][0,3]))
+            
+            normal1 = Image((data['label'][0,4:7]*0.5 + 0.5))
+
+            inp2 = Image(util.tensor2im(data['label'][0,7:10]))
+            depth2 = Image((data['label'][0,10]))
+            normal2 = Image(util.tensor2im(data['label'][0,11:14]*0.5 + 0.5))
 
             run.track(depth1, name = "Depth 1",step=epoch)
             run.track(normal1, name = "Normal 1",step=epoch)

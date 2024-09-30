@@ -6,49 +6,7 @@ import torch
 import numpy as np
 import torch.nn.functional as F
 
-# MIN_R = -8056.0 
-# MAX_R = 8060.0
-# MIN_G = -462.5 
-# MAX_G = 4484.0
-# MIN_B = -6924.0 
-# MAX_B = 5504.0
-
 max_depth = 1065353216.0
-max_normal = 255.0
-# def read_pos3d(filepath):
-
-#     dtype = np.dtype([
-#         ("R", np.float16),
-#         ("G", np.float16),
-#         ("B", np.float16),
-#         ("A", np.float16),
-#     ]
-#     )
-
-#     data = np.fromfile(filepath, dtype=dtype)
-    
-#     posx = data["R"]
-#     posy = data["G"]
-#     posz = data["B"]
-
-#     return posx.reshape(1024, 1024), posy.reshape(1024, 1024), posz.reshape(1024, 1024)
-    
-# def read_rgba(filepath):
-
-#     dtype = np.dtype([
-#         ("R", np.uint32),
-#         ("G", np.uint16),
-#         ("B", np.uint16),
-#     ]
-#     )
-
-#     data = np.fromfile(filepath, dtype=dtype)
-
-#     point_id = data["R"]
-#     depth = data["G"]
-#     obj_id = data["B"]
-
-#     return point_id.reshape(1024, 1024), depth.reshape(1024, 1024), obj_id.reshape(1024, 1024)
 
 
 class AlignedDataset(BaseDataset):
@@ -56,24 +14,45 @@ class AlignedDataset(BaseDataset):
         self.opt = opt
         self.root = opt.dataroot    
 
-        ### input A (label maps)
-        dir_A = '_A' if self.opt.label_nc == 0 else '_label'
-        self.dir_A = "/home/ubuntu/utah/1780_dataset/1780_Dataset_Input/" #os.path.join(opt.dataroot, opt.phase + dir_A)
-        self.A_paths = sorted(make_dataset(self.dir_A))
+        if opt.phase == 'train' or opt.phase == 'test':
+            ### input A (label maps)
+            dir_A = '_A' if self.opt.label_nc == 0 else '_label'
+            self.dir_A = "/home/ubuntu/utah/1780_dataset/1780_Dataset_Input/" #os.path.join(opt.dataroot, opt.phase + dir_A)
+            self.A_paths = sorted(make_dataset(self.dir_A))
 
-        ### input B (real images)
-        if opt.isTrain or opt.use_encoded_image:
-            dir_B = '_B' if self.opt.label_nc == 0 else '_img'
-            self.dir_B = "/home/ubuntu/utah/1780_dataset/1780_Dataset_Target/"#os.path.join(opt.dataroot, opt.phase + dir_B)  
-            self.B_paths = sorted(make_dataset(self.dir_B))
+            ### input B (real images)
+            if opt.isTrain or opt.use_encoded_image:
+                dir_B = '_B' if self.opt.label_nc == 0 else '_img'
+                self.dir_B = "/home/ubuntu/utah/1780_dataset/1780_Dataset_Target/"#os.path.join(opt.dataroot, opt.phase + dir_B)  
+                self.B_paths = sorted(make_dataset(self.dir_B))
 
-        ### Depth
-        self.dir_depth = "/home/ubuntu/utah/1780_dataset/Depths/"#os.path.join(opt.dataroot, "PCOData")  
-        self.depth_paths = sorted(make_dataset(self.dir_depth))
+            ### Depth
+            self.dir_depth = "/home/ubuntu/utah/1780_dataset/Depths/"#os.path.join(opt.dataroot, "PCOData")  
+            self.depth_paths = sorted(make_dataset(self.dir_depth))
 
-        ### Normal
-        self.dir_normal = "/home/ubuntu/utah/1780_dataset/Normals/"#os.path.join(opt.dataroot, "Normal")  
-        self.normal_paths = sorted(make_dataset(self.dir_normal))
+            ### Normal
+            self.dir_normal = "/home/ubuntu/utah/1780_dataset/Normals/"#os.path.join(opt.dataroot, "Normal")  
+            self.normal_paths = sorted(make_dataset(self.dir_normal))
+
+        elif opt.phase == 'val':
+            ### input A (label maps)
+            dir_A = '_A' if self.opt.label_nc == 0 else '_label'
+            self.dir_A = "/home/ubuntu/utah/1992024_1_6001/1780_Validation_Input/" #os.path.join(opt.dataroot, opt.phase + dir_A)
+            self.A_paths = sorted(make_dataset(self.dir_A))
+
+            ### input B (real images)
+            if opt.isTrain or opt.use_encoded_image:
+                dir_B = '_B' if self.opt.label_nc == 0 else '_img'
+                self.dir_B = "/home/ubuntu/utah/1992024_1_6001/1780_Validation_Target/"#os.path.join(opt.dataroot, opt.phase + dir_B)  
+                self.B_paths = sorted(make_dataset(self.dir_B))
+
+            ### Depth
+            self.dir_depth = "/home/ubuntu/utah/1992024_1_6001/Depths/"#os.path.join(opt.dataroot, "PCOData")  
+            self.depth_paths = sorted(make_dataset(self.dir_depth))
+
+            ### Normal
+            self.dir_normal = "/home/ubuntu/utah/1992024_1_6001/Normals/"#os.path.join(opt.dataroot, "Normal")  
+            self.normal_paths = sorted(make_dataset(self.dir_normal))
 
         if opt.isTrain:
             assert len(self.A_paths) == len(self.B_paths), f"{len(self.A_paths)}_{len(self.B_paths)} \n {self.dir_A}_{self.dir_B}"
@@ -81,7 +60,6 @@ class AlignedDataset(BaseDataset):
         assert len(self.A_paths) == len(self.depth_paths), f"{len(self.A_paths)}_{len(self.depth_paths)}"
         assert len(self.A_paths) == len(self.normal_paths), f"{len(self.A_paths)}_{len(self.normal_paths)}"
 
-        
         assert [f.split('/')[-1].split('-')[0] for f in self.A_paths] == [f.split('/')[-1].split('-')[0] for f in self.depth_paths], "images and depths do not match"
         assert [f.split('/')[-1].split('-')[0] for f in self.A_paths] == [f.split('/')[-1].split('-')[0] for f in self.normal_paths], "images and normals do not match"
 
@@ -137,22 +115,11 @@ class AlignedDataset(BaseDataset):
 
         number = int(os.path.basename(A_path).replace('-color.png',''))
 
-        if self.opt.label_nc == 0:
-            #transform_depth = get_transform(self.opt, params, normalize=False)
-            #depth_tensor = transform_depth(depth)
-            
-            # point_id = (point_id[None, None] / 1048575) * 2. - 1.
-            # depth = (depth[None, None] / 15130) * 2. - 1.
-            # obj_id = (obj_id[None, None] / 1986) * 2. - 1.
+        if self.opt.label_nc == 0: # this is True
+
             depth = torch.from_numpy(depth)
             normal = torch.from_numpy(normal)
 
-            # pos_x = 1.5 * (2 * (np.array(pos_x) - MIN_R) / (MAX_R - MIN_R) - 1)
-            # pos_y = 1.5 * (2 * (np.array(pos_y) - MIN_G) / (MAX_G - MIN_G) - 1)
-            # pos_z = 1.5 * (2 * (np.array(pos_z) - MIN_B) / (MAX_B - MIN_B) - 1)
-            # pos_x = torch.from_numpy(pos_x)[None, None]
-            # pos_y = torch.from_numpy(pos_y)[None, None]
-            # pos_z = torch.from_numpy(pos_z)[None, None]
 
             if A_tensor.shape[-1] == 512:
                 point_id = F.interpolate(point_id, size=(512, 512), mode='bicubic', align_corners=False)
@@ -168,7 +135,7 @@ class AlignedDataset(BaseDataset):
                               normal[:,:,:3].permute(2,0,1).to(A_tensor.dtype)))
         
         ### if using instance maps        
-        if not self.opt.no_instance:
+        if not self.opt.no_instance: # this is False
             inst_path = self.inst_paths[index]
             inst = Image.open(inst_path)
             inst_tensor = transform_A(inst)

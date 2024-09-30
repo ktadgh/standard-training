@@ -300,7 +300,7 @@ class MultiscaleDiscriminator(nn.Module):
         self.num_D = num_D
         self.n_layers = n_layers
         self.getIntermFeat = getIntermFeat
-        input_nc = 6
+        input_nc = 17
         for i in range(num_D):
             netD = NLayerDiscriminator(input_nc, ndf, n_layers, norm_layer, use_sigmoid, getIntermFeat)
             if getIntermFeat:                                
@@ -618,11 +618,20 @@ class OFLoss(torch.nn.Module):
             image = Image(gt2_im)
             run.track(image, name='Ground Truth 2')
 
+            im1_im = (im1[0]+1)*0.5
+            im1_im = (im1_im*255).detach().permute(1,2,0).cpu().numpy().astype(np.uint8)
+            image = Image(im1_im)
+            run.track(image, name='Input 1')
 
-        diff = gt2.to('cuda:0') - warp_i1.to('cuda:0')
+            im2_im = (im2[0]+1)*0.5
+            im2_im = (im2_im*255).detach().permute(1,2,0).cpu().numpy().astype(np.uint8)
+            image = Image(im2_im)
+            run.track(image, name='Input 2')
+
+        diff = (gt2.to('cuda:0') - warp_i1.to('cuda:0')).abs()
         sumdiff = torch.sum(diff, dim=1)
         summdiff2 = sumdiff.pow(2)
-        mask = torch.exp(-50.0 * summdiff2).unsqueeze(1).to('cuda:0')
+        mask = torch.exp(-100.0 * summdiff2).unsqueeze(1).to('cuda:0')
         
         if run is not None:
             mask_im = mask[0].squeeze()
@@ -632,5 +641,11 @@ class OFLoss(torch.nn.Module):
 
                     
         warp_o1 = flow_warping(im1.to('cuda:0'), flow_i21.to('cuda:0')) # flow warped model output
+        if run is not None:
+            warped_out = warp_i1 * mask
+            warped_out = (warped_out[0]+1)*0.5
+            warped_out_im =  (warped_out*255).detach().permute(1,2,0).cpu().numpy().astype(np.uint8)
+            image = Image(warped_out_im)
+            run.track(image, name='masked warped gt1')
 
         return  self.criterion(im2 * mask, warp_o1.to(device) * mask).to(device)
