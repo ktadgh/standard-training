@@ -49,10 +49,19 @@ def define_G(input_nc, output_nc, ngf, netG, n_downsample_global=3, n_blocks_glo
     netG.apply(weights_init)
     return netG
 
+# from thop import profile
 def define_D(input_nc, ndf, n_layers_D, norm='instance', use_sigmoid=False, num_D=1, getIntermFeat=False, gpu_ids=[]):        
     norm_layer = get_norm_layer(norm_type=norm)   
     netD = MultiscaleDiscriminator(input_nc, ndf, n_layers_D, norm_layer, use_sigmoid, num_D, getIntermFeat)   
-    print(netD)
+    # x = torch.randn(1, 10, 1024, 1024).cuda()
+    # mynetD = MultiscaleDiscriminator(10, ndf, n_layers_D, norm_layer, use_sigmoid, num_D, getIntermFeat).cuda()
+    # macs10, params = profile(mynetD, inputs=(x,))
+
+    # x = torch.randn(1, 17, 1024, 1024).cuda()
+    # mynetD = MultiscaleDiscriminator(17, ndf, n_layers_D, norm_layer, use_sigmoid, num_D, getIntermFeat).cuda()
+    # macs17, params = profile(mynetD, inputs=(x,))
+
+    # raise ValueError(macs10, macs17)
     if len(gpu_ids) > 0:
         assert(torch.cuda.is_available())
         netD.cuda(gpu_ids[0])
@@ -300,7 +309,6 @@ class MultiscaleDiscriminator(nn.Module):
         self.num_D = num_D
         self.n_layers = n_layers
         self.getIntermFeat = getIntermFeat
-        input_nc = 17
         for i in range(num_D):
             netD = NLayerDiscriminator(input_nc, ndf, n_layers, norm_layer, use_sigmoid, getIntermFeat)
             if getIntermFeat:                                
@@ -585,14 +593,10 @@ class OFLoss(torch.nn.Module):
 
 
     def forward(self,im1,im2, gt1,gt2, run = None, device = 'cuda'):
-        # im1 = torch.rand(1,3,1024,1024).cuda()
-        # im2 = torch.rand(1,3,1024,1024).cuda()
-        # gt1 = torch.rand(1,3,1024,1024).cuda()
-        # gt2 = torch.rand(1,3,1024,1024).cuda()
-        # with profile(activities=[ProfilerActivity.CPU,ProfilerActivity.CUDA], record_shapes=True) as prof:
         flow_warping = Resample2d().to(device)
         input = torch.stack([gt2, gt1],dim =2)
 
+        # with torch.no_grad():
         try:
             flow_i21 = (self.flownet(input.to('cuda:0'))) # flow from model input1 to 2
         except:
@@ -628,10 +632,10 @@ class OFLoss(torch.nn.Module):
             image = Image(im2_im)
             run.track(image, name='Input 2')
 
-        diff = (gt2.to('cuda:0') - warp_i1.to('cuda:0')).abs()
+        diff = (gt2.to('cuda:0') - warp_i1.to('cuda:0'))
         sumdiff = torch.sum(diff, dim=1)
         summdiff2 = sumdiff.pow(2)
-        mask = torch.exp(-100.0 * summdiff2).unsqueeze(1).to('cuda:0')
+        mask = torch.exp(-50.0 * summdiff2).unsqueeze(1).to('cuda:0')
         
         if run is not None:
             mask_im = mask[0].squeeze()
@@ -639,13 +643,25 @@ class OFLoss(torch.nn.Module):
             mask_im = Image(mask_im)
             run.track(mask_im, name='mask')
 
-                    
-        warp_o1 = flow_warping(im1.to('cuda:0'), flow_i21.to('cuda:0')) # flow warped model output
+        with torch.no_grad():          
+            warp_o1 = flow_warping(im1.to('cuda:0'), flow_i21.to('cuda:0')).detach() # flow warped model output
         if run is not None:
             warped_out = warp_i1 * mask
-            warped_out = (warped_out[0]+1)*0.5
+            warped_out = (warped_out[0])
             warped_out_im =  (warped_out*255).detach().permute(1,2,0).cpu().numpy().astype(np.uint8)
             image = Image(warped_out_im)
             run.track(image, name='masked warped gt1')
+
+            equal_tensor = (warp_i1.cuda() == gt2.cuda())
+            equal_tensor = (equal_tensor[0]+1)*0.5
+            equal_im = (equal_tensor*255).detach().permute(1,2,0).cpu().numpy().astype(np.uint8)
+            image = Image(equal_im)
+            run.track(image, name='equal_tensor')
+
+            masked_gt2 = gt2.cuda() * mask.cuda()
+            masked_gt2 = (masked_gt2[0])
+            masked_gt2_im = (masked_gt2*255).detach().permute(1,2,0).cpu().numpy().astype(np.uint8)
+            image = Image(masked_gt2_im)
+            run.track(image, name='masked_gt2')
 
         return  self.criterion(im2 * mask, warp_o1.to(device) * mask).to(device)

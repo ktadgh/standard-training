@@ -25,6 +25,9 @@ class Pix2PixHDModel(BaseModel):
         self.gen_features = self.use_features and not self.opt.load_features
         input_nc = opt.label_nc if opt.label_nc != 0 else opt.input_nc
 
+
+
+        self.cutoff = opt.cutoff
         ##### define networks        
         # Generator network
         netG_input_nc = input_nc        
@@ -42,6 +45,7 @@ class Pix2PixHDModel(BaseModel):
             netD_input_nc = input_nc + opt.output_nc
             if not opt.no_instance:
                 netD_input_nc += 1
+            netD_input_nc = 17 - opt.cutoff
             self.netD = networks.define_D(netD_input_nc, opt.ndf, opt.n_layers_D, opt.norm, use_sigmoid, 
                                           opt.num_D, not opt.no_ganFeat_loss, gpu_ids=self.gpu_ids)
 
@@ -142,7 +146,7 @@ class Pix2PixHDModel(BaseModel):
         return input_label, inst_map, real_image, feat_map
 
     def discriminate(self, input_label, test_image, use_pool=False):
-        input_concat = torch.cat((input_label, test_image.detach()), dim=1)
+        input_concat = torch.cat((input_label, test_image.detach()), dim=1)[:,self.cutoff:]
         if use_pool:            
             fake_query = self.fake_pool.query(input_concat)
             return self.netD.forward(fake_query)
@@ -182,7 +186,7 @@ class Pix2PixHDModel(BaseModel):
 
 
         # GAN loss (Fake Passability Loss)        
-        pred_fake = self.netD.forward(torch.cat((input_label, fake_image), dim=1))        
+        pred_fake = self.netD.forward(torch.cat((input_label[:,self.cutoff:], fake_image), dim=1))        
         loss_G_GAN = self.criterionGAN(pred_fake, True)               
         
 

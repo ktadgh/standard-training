@@ -179,6 +179,7 @@ args_to_remove = [
 ('--delta_loss', str(opt.delta_loss)),
 
 ('--accum_iter', str(opt.accum_iter)),
+('--cutoff', str(opt.cutoff)),
 
 ]
 
@@ -314,6 +315,8 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
     # with profile(activities=[ProfilerActivity.CPU,ProfilerActivity.CUDA], record_shapes=True) as prof:  
     for i, data in enumerate(tqdm(dataset),start=epoch_iter):
         j +=1 
+        if j >= 2000:
+            break
         if total_steps % opt.print_freq == print_delta:
             iter_start_time = time.time()
         total_steps += opt.batchSize
@@ -321,11 +324,6 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
 
         # whether to collect output images
         save_fake = total_steps % opt.display_freq == display_delta
-        
-        # with torch.no_grad():
-        #     teacher_image = teacher_model.module.netG(data['label'][:3].cuda())
-
-        # with record_function("data_processing"):
 
         labels = data['label']  # A list of tensors
         images = data['image']  # A list of tensors
@@ -357,7 +355,7 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
 
         # calculate final loss scalar
         loss_D = (loss_dict['D_fake'] + loss_dict['D_real']) * 0.5
-        loss_G = loss_dict['G_GAN'] + loss_dict.get('G_GAN_Feat',0) + loss_dict.get('G_VGG',0)
+        loss_G = loss_dict.get('G_GAN_Feat',0) + loss_dict.get('G_VGG',0) + loss_dict['G_GAN']
         distloss = 0
         # _ = model.module.netG(data['label'].cuda())
 
@@ -385,27 +383,30 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
                 if j == 0:
                     tl = temp_loss(im1,im2,gt1,gt2, run)
                 else:
-                    tl = temp_loss(im1,im2,gt1,gt2, run)
+                    tl = temp_loss(im1,im2,gt1,gt2, None)
+            if j % 50 ==0:
+                run.track(tl*opt.alpha_temporal, name = 'Temporal Loss', step = epoch)
 
             loss_G += tl*opt.alpha_temporal
 
 
+
         ############### Backward Pass ####################
-        model.module.netD.requires_grad_(False)
+        # model.module.netD.requires_grad_(False)
         loss_G.backward()
-        model.module.netD.requires_grad_(True)
+        # model.module.netD.requires_grad_(True)
 
-        if j % opt.accum_iter == 0:
-            optimizer_G.step()
-            optimizer_G.zero_grad()
+        # if j % opt.accum_iter == 0:
+        optimizer_G.step()
+        optimizer_G.zero_grad()
 
-        model.module.netG.requires_grad_(False)
+        # model.module.netG.requires_grad_(False)
         loss_D.backward()
-        model.module.netG.requires_grad_(True)
+        # model.module.netG.requires_grad_(True)
 
-        if j % opt.accum_iter == 0:
-            optimizer_D.step()
-            optimizer_D.zero_grad()  
+        # if j % opt.accum_iter == 0:
+        optimizer_D.step()
+        optimizer_D.zero_grad()  
 
 
 
@@ -475,6 +476,7 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
             run.track(normal2, name = "Normal 2",step=epoch)
 
             # tracking metrics with AIM
+        if j % 50 == 0:
             run.track(loss_D.detach(), name = 'Disriminator loss')
             run.track(loss_dict['G_GAN'].detach(), name = 'GAN loss (default is hinge)')
             run.track(loss_dict.get('G_GAN_Feat',0).detach(), name = 'Feature Loss')
