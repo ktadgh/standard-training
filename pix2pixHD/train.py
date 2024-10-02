@@ -35,9 +35,16 @@ import torch
 import re
 from tqdm import tqdm
 import wandb
+import random
+
+random.seed(1)
+torch.manual_seed(1)
 
 temp_loss = OFLoss()
 mse = torch.nn.MSELoss(size_average=True).cuda() 
+
+
+torch.autograd.set_detect_anomaly(True)
 
 def dir_psnr(A, B):
     psnr = PeakSignalNoiseRatio(data_range =1.)
@@ -179,6 +186,7 @@ args_to_remove = [
 ('--delta_loss', str(opt.delta_loss)),
 
 ('--accum_iter', str(opt.accum_iter)),
+
 ('--cutoff', str(opt.cutoff)),
 
 ]
@@ -315,7 +323,7 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
     # with profile(activities=[ProfilerActivity.CPU,ProfilerActivity.CUDA], record_shapes=True) as prof:  
     for i, data in enumerate(tqdm(dataset),start=epoch_iter):
         j +=1 
-        if j >= 2000:
+        if j >= 500:
             break
         if total_steps % opt.print_freq == print_delta:
             iter_start_time = time.time()
@@ -355,7 +363,7 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
 
         # calculate final loss scalar
         loss_D = (loss_dict['D_fake'] + loss_dict['D_real']) * 0.5
-        loss_G = loss_dict.get('G_GAN_Feat',0) + loss_dict.get('G_VGG',0) + loss_dict['G_GAN']
+        loss_G = loss_dict.get('G_GAN_Feat',0) + loss_dict.get('G_VGG',0) +loss_dict['G_GAN']
         distloss = 0
         # _ = model.module.netG(data['label'].cuda())
 
@@ -369,7 +377,7 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
         gt2 = images[2:]
         gt1 = images[1:-1]
 
-        model_data = model.module.netG(data['label'].cuda())
+        model_data = generated
 
         im1 = model_data[:-1].detach()
         im2 = model_data[1:]
@@ -384,30 +392,36 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
                     tl = temp_loss(im1,im2,gt1,gt2, run)
                 else:
                     tl = temp_loss(im1,im2,gt1,gt2, None)
+
             if j % 50 ==0:
                 run.track(tl*opt.alpha_temporal, name = 'Temporal Loss', step = epoch)
 
-            loss_G += tl*opt.alpha_temporal
+            loss_G =loss_G+ tl*opt.alpha_temporal
 
 
 
         ############### Backward Pass ####################
-        # model.module.netD.requires_grad_(False)
+        # d_grads_before = [param.grad.clone() if param.grad is not None else None for param in model.module.netD.parameters() ]
+        model.module.netD.requires_grad_(False)
         loss_G.backward()
-        # model.module.netD.requires_grad_(True)
+        model.module.netD.requires_grad_(True)
+        # d_grads_after = [param.grad.clone() if param.grad is not None else None for param in model.module.netD.parameters() ]
+        # assert all(torch.allclose(before, after) for before, after in zip(d_grads_before, d_grads_after) if (before is not None) or (after is not None)), "Discriminator gradients altered"
 
-        # if j % opt.accum_iter == 0:
-        optimizer_G.step()
-        optimizer_G.zero_grad()
+        if j % opt.accum_iter == 0:
+            optimizer_G.step()
+            optimizer_G.zero_grad()
 
-        # model.module.netG.requires_grad_(False)
+        # g_grads_before = [param.grad.clone() if param.grad is not None else None for param in model.module.netG.parameters()]
+        model.module.netG.requires_grad_(False)
         loss_D.backward()
-        # model.module.netG.requires_grad_(True)
+        model.module.netG.requires_grad_(True)
+        # g_grads_after = [param.grad.clone()  if param.grad is not None else None for param in model.module.netG.parameters()]
+        # assert all(torch.allclose(before, after) for before, after in zip(g_grads_before, g_grads_after)if (before is not None) or (after is not None)), "Generator gradients altered"
 
-        # if j % opt.accum_iter == 0:
-        optimizer_D.step()
-        optimizer_D.zero_grad()  
-
+        if j % opt.accum_iter == 0:
+            optimizer_D.step()
+            optimizer_D.zero_grad()  
 
 
         ############## Display results and errors ##########

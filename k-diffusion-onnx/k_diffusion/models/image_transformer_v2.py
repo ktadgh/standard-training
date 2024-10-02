@@ -72,9 +72,9 @@ def tag_module(module, tag):
 
 
 def apply_wd(module):
-    # for name, param in module.named_parameters():
-    #     if name.endswith("weight"):
-    #         tag_param(param, "wd")
+    for name, param in module.named_parameters():
+        if name.endswith("weight"):
+            tag_param(param, "wd")
     return module
 
 
@@ -900,6 +900,7 @@ class ImageTransformerDenoiserModelV2(nn.Module):
 
         # raise ValueError(x.shape)
         x = self.patch_in(x)
+        skip1 = x.clone()
         # TODO: pixel aspect ratio for nonsquare patches
         pos = make_axial_pos(x.shape[1], x.shape[2], device=x.device).view(x.shape[1], x.shape[2], 2)
 
@@ -948,7 +949,8 @@ class ImageTransformerDenoiserModelV2(nn.Module):
                 self.patches_for_distillation4 = x
         
         # Unpatching
-        x = self.out_norm(x)
+        raise ValueError(x.shape, skip1.shape)
+        x = self.out_norm(x+ skip1)
         self.patches_for_distillation5 = x
         # raise ValueError(self.patches_for_distillation5.shape, self.patches_for_distillation4.shape,self.patches_for_distillation3.shape,
         #                  self.patches_for_distillation2.shape, self.patches_for_distillation1.shape)

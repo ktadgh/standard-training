@@ -172,6 +172,8 @@ args_to_remove = [
 
 ('--no_ganFeat_loss', str(opt.no_ganFeat_loss)),
 
+('--accum_iter', str(opt.accum_iter)),
+
 
 ]
 
@@ -331,14 +333,21 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
         # # sum = (model.module.netG.alpha1+model.module.netG.alpha2+model.module.netG.alpha3+model.module.netG.alpha4+model.module.netG.alpha5)
         # loss_G += ( distloss.squeeze() )* opt.alpha
 
-        optimizer_G.zero_grad()
+        model.module.netD.requires_grad_(False)
         loss_G.backward()
-        optimizer_G.step()
-        optimizer_D.zero_grad()
+        model.module.netD.requires_grad_(True)
+
+        if j % opt.accum_iter == 0:
+            optimizer_G.step()
+            optimizer_G.zero_grad()
+
+        model.module.netG.requires_grad_(False)
         loss_D.backward()
-        optimizer_D.step()    
-        losses_G = 0    
-        losses_D = 0
+        model.module.netG.requires_grad_(True)
+
+        if j % opt.accum_iter == 0:
+            optimizer_D.step()
+            optimizer_D.zero_grad()
 
 
         ############### Backward Pass ####################
@@ -374,7 +383,6 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
 
             run.track(depth1, name = "Depth 1",step=epoch)
             run.track(normal1, name = "Normal 1",step=epoch)
-
 
             # tracking metrics with AIM
             run.track(loss_D.detach(), name = 'Disriminator loss')
