@@ -562,7 +562,7 @@ class DistillLossNoPool(torch.nn.Module):
         loss = torch.norm(torch.abs(sxs-wt), p='fro')**2
         return loss
 
-
+import util.util as util
 class OFLoss(torch.nn.Module):
     
     def __init__(self):
@@ -596,72 +596,72 @@ class OFLoss(torch.nn.Module):
         flow_warping = Resample2d().to(device)
         input = torch.stack([gt2, gt1],dim =2)
 
-        # with torch.no_grad():
-        try:
-            flow_i21 = (self.flownet(input.to('cuda:0'))) # flow from model input1 to 2
-        except:
-            raise ValueError(input.shape)
-                
-        gt1 = gt1.to('cuda:0')
-        flow_i21 = flow_i21.to('cuda:0')
-        warp_i1 = flow_warping(gt1, flow_i21)# flow warped gt
+        with torch.no_grad():
+            try:
+                flow_i21 = (self.flownet(input.to('cuda:0'))) # flow from model input1 to 2
+            except:
+                raise ValueError(input.shape)
+                    
+            gt1 = gt1.to('cuda:0')
+            flow_i21 = flow_i21.to('cuda:0')
+            warp_i1 = flow_warping(gt1, flow_i21)# flow warped gt
 
-        if run is not None:
-            warped_im = (warp_i1[0]+1)*0.5
-            warped_im = (warped_im*255).detach().permute(1,2,0).cpu().numpy().astype(np.uint8)
-            image = Image(warped_im)
-            run.track(image, name='warped_im')
+            if run is not None:
+                warped_im = (warp_i1[0]+1)*0.5
+                warped_im = (warped_im*255).detach().permute(1,2,0).cpu().numpy().astype(np.uint8)
+                image = Image(warped_im)
+                run.track(image, name='warped_im')
 
-            gt1_im = (gt1[0]+1)*0.5
-            gt1_im = (gt1_im*255).detach().permute(1,2,0).cpu().numpy().astype(np.uint8)
-            image = Image(gt1_im)
-            run.track(image, name='Ground Truth 1')
+                gt1_im = (gt1[0]+1)*0.5
+                gt1_im = (gt1_im*255).detach().permute(1,2,0).cpu().numpy().astype(np.uint8)
+                image = Image(gt1_im)
+                run.track(image, name='Ground Truth 1')
 
-            gt2_im = (gt2[0]+1)*0.5
-            gt2_im = (gt2_im*255).detach().permute(1,2,0).cpu().numpy().astype(np.uint8)
-            image = Image(gt2_im)
-            run.track(image, name='Ground Truth 2')
+                gt2_im = (gt2[0]+1)*0.5
+                gt2_im = (gt2_im*255).detach().permute(1,2,0).cpu().numpy().astype(np.uint8)
+                image = Image(gt2_im)
+                run.track(image, name='Ground Truth 2')
 
-            im1_im = (im1[0]+1)*0.5
-            im1_im = (im1_im*255).detach().permute(1,2,0).cpu().numpy().astype(np.uint8)
-            image = Image(im1_im)
-            run.track(image, name='Input 1')
+                im1_im = (im1[0]+1)*0.5
+                im1_im = (im1_im*255).detach().permute(1,2,0).cpu().numpy().astype(np.uint8)
+                image = Image(im1_im)
+                run.track(image, name='Input 1')
 
-            im2_im = (im2[0]+1)*0.5
-            im2_im = (im2_im*255).detach().permute(1,2,0).cpu().numpy().astype(np.uint8)
-            image = Image(im2_im)
-            run.track(image, name='Input 2')
+                im2_im = (im2[0]+1)*0.5
+                im2_im = (im2_im*255).detach().permute(1,2,0).cpu().numpy().astype(np.uint8)
+                image = Image(im2_im)
+                run.track(image, name='Input 2')
 
-        diff = (gt2.to('cuda:0') - warp_i1.to('cuda:0'))
-        sumdiff = torch.sum(diff, dim=1)
-        summdiff2 = sumdiff.pow(2)
-        mask = torch.exp(-50.0 * summdiff2).unsqueeze(1).to('cuda:0')
-        
-        if run is not None:
-            mask_im = mask[0].squeeze()
-            mask_im = (mask_im*255).detach().cpu().numpy().astype(np.uint8)
-            mask_im = Image(mask_im)
-            run.track(mask_im, name='mask')
+            diff = (gt2.to('cuda:0') - warp_i1.to('cuda:0'))
+            sumdiff = torch.sum(diff, dim=1)
+            summdiff2 = sumdiff.pow(2)
+            mask = torch.exp(-50.0 * summdiff2).unsqueeze(1).to('cuda:0')
 
-        with torch.no_grad():          
-            warp_o1 = flow_warping(im1.to('cuda:0'), flow_i21.to('cuda:0')).detach() # flow warped model output
-        if run is not None:
-            warped_out = warp_i1 * mask
-            warped_out = (warped_out[0])
-            warped_out_im =  (warped_out*255).detach().permute(1,2,0).cpu().numpy().astype(np.uint8)
-            image = Image(warped_out_im)
-            run.track(image, name='masked warped gt1')
+            if run is not None:
+                mask_im = mask[0].squeeze()
+                mask_im = (mask_im*255).detach().cpu().numpy().astype(np.uint8)
+                mask_im = Image(mask_im)
+                run.track(mask_im, name='mask')
 
-            equal_tensor = (warp_i1.cuda() == gt2.cuda())
-            equal_tensor = (equal_tensor[0]+1)*0.5
-            equal_im = (equal_tensor*255).detach().permute(1,2,0).cpu().numpy().astype(np.uint8)
-            image = Image(equal_im)
-            run.track(image, name='equal_tensor')
+            with torch.no_grad():          
+                warp_o1 = flow_warping(im1.to('cuda:0'), flow_i21.to('cuda:0')).detach() # flow warped model output
+            if run is not None:
+                warped_out = warp_i1 * mask
+                warped_out = (warped_out[0])
+                warped_out_im =  util.tensor2im(warped_out.detach())
+                image = Image(warped_out_im)
+                run.track(image, name='masked warped gt1')
 
-            masked_gt2 = gt2.cuda() * mask.cuda()
-            masked_gt2 = (masked_gt2[0])
-            masked_gt2_im = (masked_gt2*255).detach().permute(1,2,0).cpu().numpy().astype(np.uint8)
-            image = Image(masked_gt2_im)
-            run.track(image, name='masked_gt2')
+                equal_tensor = (warp_i1.cuda() == gt2.cuda())
+                equal_tensor = (equal_tensor[0]+1)*0.5
+                equal_im = (equal_tensor*255).detach().permute(1,2,0).cpu().numpy().astype(np.uint8)
+                image = Image(equal_im)
+                run.track(image, name='equal_tensor')
+
+                masked_gt2 = gt2.cuda() * mask.cuda()
+                masked_gt2 = (masked_gt2[0])
+                masked_gt2_im = (masked_gt2*255).detach().permute(1,2,0).cpu().numpy().astype(np.uint8)
+                image = Image(masked_gt2_im)
+                run.track(image, name='masked_gt2')
 
         return  self.criterion(im2 * mask, warp_o1.to(device) * mask).to(device)

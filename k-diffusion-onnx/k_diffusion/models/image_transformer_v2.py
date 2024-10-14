@@ -949,8 +949,8 @@ class ImageTransformerDenoiserModelV2(nn.Module):
                 self.patches_for_distillation4 = x
         
         # Unpatching
-        raise ValueError(x.shape, skip1.shape)
-        x = self.out_norm(x+ skip1)
+
+        x = self.out_norm(x)
         self.patches_for_distillation5 = x
         # raise ValueError(self.patches_for_distillation5.shape, self.patches_for_distillation4.shape,self.patches_for_distillation3.shape,
         #                  self.patches_for_distillation2.shape, self.patches_for_distillation1.shape)

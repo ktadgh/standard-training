@@ -214,7 +214,7 @@ for i, arg in enumerate(sys.argv):
         if arg not in ['--resume_distill_epoch', '--teacher_adv', '--teacher_feat', '--teacher_vgg', '--aim_repo', '--delta_loss']:
             filtered_args.append(arg)
 
-sys.argv = filtered_args
+sys.argv = filtered_args[:1] + filtered_args[3:]
 
 
 test_opt = TestOptions().parse(save=False)
@@ -257,8 +257,8 @@ if opt.resume_distill_epoch != 0:
     repo = string['repo']
 
     run = Run(
-        run_hash=aim_id,
-        repo=repo,
+        # run_hash=aim_id,
+        repo='nothing',
         experiment=opt.experiment_name,
         log_system_params =True
     )
@@ -322,9 +322,7 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
     j = -1
     # with profile(activities=[ProfilerActivity.CPU,ProfilerActivity.CUDA], record_shapes=True) as prof:  
     for i, data in enumerate(tqdm(dataset),start=epoch_iter):
-        j +=1 
-        if j >= 500:
-            break
+        j +=1
         if total_steps % opt.print_freq == print_delta:
             iter_start_time = time.time()
         total_steps += opt.batchSize
@@ -333,8 +331,8 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
         # whether to collect output images
         save_fake = total_steps % opt.display_freq == display_delta
 
-        labels = data['label']  # A list of tensors
-        images = data['image']  # A list of tensors
+        labels = ((data['label']))  # A list of tensors
+        images = (data['image'])  # A list of tensors
 
         # Use slicing and torch.cat to concatenate pairs
         tensors = torch.cat([torch.cat([labels[:-1],labels[1:]], dim=1)], dim=0)
@@ -521,14 +519,12 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
         generated = torch.zeros(1,3,1024,1024).cuda()
 
         previous_label = torch.zeros(1,14,1024,1024).cuda()
-        for i, data in tqdm(enumerate(test_dataset)):   
-            if i > 2000:
-                break
+        for i, data in tqdm(enumerate(test_dataset)):  
             if i == 0:
-                previous_label = data['label'].cuda()
+                previous_label = (data['label'].cuda())
             if i <= 1:
-                labels = data['label'].cuda()  # A list of tensors
-                images = data['image'].cuda()  # A list of tensors
+                labels = (data['label']).cuda()  # A list of tensors
+                images = (data['image']).cuda()  # A list of tensors
 
                 tensors = torch.cat([torch.cat([previous_label,labels], dim=1)], dim=0)
 
@@ -537,8 +533,8 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
                     generated = model.module.netG(tensors.cuda())
 
             else:
-                labels = data['label'].cuda()  # A list of tensors
-                images = data['image'].cuda()  # A list of tensors
+                labels = (data['label'].cuda())  # A list of tensors
+                images = (data['image'].cuda())  # A list of tensors
 
                 tensors = torch.cat([torch.cat([previous_label, labels], dim=1)], dim=0)
                 previous_label = labels

@@ -250,12 +250,11 @@ if opt.resume_distill_epoch != 0:
     repo = string['repo']
 
     run = Run(
-        run_hash=aim_id,
+        # run_hash=aim_id,
         repo=repo,
         experiment=opt.experiment_name,
         log_system_params =True
     )
-
 
 
     g_checkpoint = torch.load(f'checkpoints/{opt.resume_repo}/epoch_{opt.resume_distill_epoch}_netG.pth', map_location = 'cuda:0')
@@ -273,6 +272,8 @@ if opt.resume_distill_epoch != 0:
     model.module.optimizer_D.load_state_dict(od_checkpoint)
     new_start_epoch = opt.resume_distill_epoch
 
+
+
 else:
     new_start_epoch = start_epoch
     run = Run(
@@ -288,8 +289,6 @@ torch.save(strings, f'checkpoints/{opt.name}/aim_strings.pth')
 
 
 # loading the teacher... 
-
-
 for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
     epoch_start_time = time.time()
     if epoch != start_epoch:
@@ -302,6 +301,8 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
         j +=1
         if total_steps % opt.print_freq == print_delta:
             iter_start_time = time.time()
+        if epoch ==11:
+            break
         total_steps += opt.batchSize
         epoch_iter += opt.batchSize
 
@@ -368,22 +369,20 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
         if j ==0:
             gen1 = Image(util.tensor2im(generated.data[0]))
             real1 = Image(util.tensor2im(data['image'][0]))
-            inp1 = Image(util.tensor2im(data['label'][0, :3]))
-            # t1 = Image(util.tensor2im(teacher_image[0]))
+            diff1 = Image(util.tensor2im(data['label'][0][:3]))
+            ref = Image(util.tensor2im(data['label'][0][3:6]))
+            rad = Image(util.tensor2im(data['label'][0][6:9]))
+            depth = Image((data['label'][0][9])*0.5 + 0.5)
+            normal = Image((data['label'][0][10:13])*0.5 + 0.5)
 
             run.track(gen1, name = 'generated image')
             run.track(real1, name = 'real image')
-            run.track(inp1, name = 'input image')
-
-            # raise ValueError(data['label'].shape)
-            depth1 = Image((data['label'][0,3]))
+            run.track(diff1, name = 'Diffuse')
+            run.track(ref, name = 'Reflection')
+            run.track(rad, name = 'Radiance')
+            run.track(depth, name = 'Depth')
+            run.track(normal, name = 'Normal')
             
-            normal1 = Image((data['label'][0,4:7]*0.5 + 0.5))
-
-
-            run.track(depth1, name = "Depth 1",step=epoch)
-            run.track(normal1, name = "Normal 1",step=epoch)
-
             # tracking metrics with AIM
             run.track(loss_D.detach(), name = 'Disriminator loss')
             run.track(loss_dict['G_GAN'].detach(), name = 'GAN loss (default is hinge)')
@@ -443,14 +442,12 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
         os.makedirs('real', exist_ok=True)
         os.makedirs('input', exist_ok=True)
 
-        os.makedirs(f'fake/{opt.experiment_name}_validation', exist_ok=True)
-        os.makedirs(f'real/{opt.experiment_name}_validation', exist_ok=True)
-        os.makedirs(f'input/{opt.experiment_name}_validation', exist_ok=True)
+        os.makedirs(f'fake/{opt.experiment_name}_validation-tr', exist_ok=True)
+        os.makedirs(f'real/{opt.experiment_name}_validation-tr', exist_ok=True)
+        os.makedirs(f'input/{opt.experiment_name}_validation-tr', exist_ok=True)
 
         model = model.eval()
         for i, data in tqdm(enumerate(val_dataset)):   
-            if i > 2000:
-                break
             ############## Forward Pass ######################
             with torch.no_grad():
                 losses, generated = model.forward(Variable(data['label']), Variable(data['inst']), 
@@ -458,8 +455,8 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
                 gen1 = (util.tensor2im(generated.data[0]))
                 real1 = (util.tensor2im(data['image'][0]))
 
-                cv2.imwrite(f'fake/{opt.experiment_name}_validation/{i}.png', gen1[:,:,::-1])
-                cv2.imwrite(f'real/{opt.experiment_name}_validation/{i}.png', real1[:,:,::-1])
+                cv2.imwrite(f'fake/{opt.experiment_name}_validation-tr/{i}.png', gen1[:,:,::-1])
+                cv2.imwrite(f'real/{opt.experiment_name}_validation-tr/{i}.png', real1[:,:,::-1])
 
 
 
@@ -469,10 +466,10 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
 
         
         torch.cuda.empty_cache()
-        fid = dir_fid(f'fake/{opt.experiment_name}_validation', f'real/{opt.experiment_name}_validation')
-        lpipzz = dir_lpips(f'fake/{opt.experiment_name}_validation', f'real/{opt.experiment_name}_validation')
-        psnr = dir_psnr(f'fake/{opt.experiment_name}_validation', f'real/{opt.experiment_name}_validation')
-        tpsnr = dir_tpsnr(f'fake/{opt.experiment_name}_validation', f'real/{opt.experiment_name}_validation')
+        fid = dir_fid(f'fake/{opt.experiment_name}_validation-tr', f'real/{opt.experiment_name}_validation-tr')
+        lpipzz = dir_lpips(f'fake/{opt.experiment_name}_validation-tr', f'real/{opt.experiment_name}_validation-tr')
+        psnr = dir_psnr(f'fake/{opt.experiment_name}_validation-tr', f'real/{opt.experiment_name}_validation-tr')
+        tpsnr = dir_tpsnr(f'fake/{opt.experiment_name}_validation-tr', f'real/{opt.experiment_name}_validation-tr')
         
         run.track(psnr, name='validation PSNR', step = epoch)
         run.track(tpsnr, name='validation tPSNR', step = epoch)
