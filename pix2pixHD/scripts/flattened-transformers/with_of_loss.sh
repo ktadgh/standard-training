@@ -1,0 +1,21 @@
+python train.py \
+  --cutoff 0 \
+  --alpha_temporal 0.0 \
+  --name linear-of-loss-a0-cutoff7 \
+  --no_flip \
+  --nThreads 12 \
+  --resume_distill_epoch 0 \
+  --alpha 1e-14 \
+  --niter 100 \
+  --niter_decay 100 \
+  --save_epoch_freq 2 \
+  --dataroot "../../images" \
+  --accum_iter 1 \
+  --batchSize 6 \
+  --cutoff 0 \
+  --label_nc 0 \
+  --no_instance \
+  --gpu_ids 0 \
+  --loadSize 1024 \
+  --config_path /home/ubuntu/tdist-flat/configs/flat-transformers/patchsize8-32.json \
+  --experiment_name linear-of-loss-a0-cutoff7

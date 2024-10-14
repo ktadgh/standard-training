@@ -1,0 +1,19 @@
+python train.py \
+    --alpha_temporal 10.0 \
+    --name og-alpha-10 \
+    --no_flip \
+    --nThreads 12 \
+    --resume_distill_epoch 0 \
+    --alpha 1e-14 \
+    --niter 100 \
+    --niter_decay 100 \
+    --save_epoch_freq 1 \
+    --dataroot "../../images" \
+    --accum_iter 2 \
+    --batchSize 3 \
+    --label_nc 0 \
+    --no_instance \
+    --gpu_ids 0 \
+    --loadSize 1024 \
+    --config_path /home/ubuntu/tdist-new-dataset/configs/flat-transformers/og-max-32.json \
+    --experiment_name og-alpha-10
