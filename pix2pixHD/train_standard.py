@@ -5,6 +5,8 @@ from options.train_options import TrainOptions
 from options.test_options import TestOptions
 # from models.networks import DistillLoss
 from thop import profile
+from models.networks import DistillLoss, OFLoss
+from torch.profiler import profile, record_function, ProfilerActivity
 
 import torch
 from torch.autograd import Variable
@@ -14,7 +16,7 @@ import fractions
 import math
 def lcm(a,b): return abs(a * b)/math.gcd(a,b) if a and b else 0
 from aim import Run, Image
-
+# torch.set_float32_matmul_precision('high')
 import cv2
 
 from data.data_loader import CreateDataLoader
@@ -36,6 +38,7 @@ import re
 from tqdm import tqdm
 
 teacher_tested = False
+# temp_loss = OFLoss()
 
 def dir_psnr(A, B):
     psnr = PeakSignalNoiseRatio(data_range =1.)
@@ -92,7 +95,7 @@ def dir_lpips(A, B):
 
 
 def dir_fid(A,B):
-    fid = os.popen(f'python -m pytorch_fid {A} {B}').read()
+    fid = os.popen(f'python -m pytorch_fid --device cuda:0 {A} {B} ').read()
     fid = (float(fid.replace('FID:','').strip()))
     return fid
 
@@ -127,6 +130,7 @@ print('#training images = %d' % dataset_size)
 
 opt.norm = 'instance'
 model = create_model(opt)
+
 import torch.nn as nn
 def has_batchnorm(model):
     for module in model.modules():
@@ -135,74 +139,10 @@ def has_batchnorm(model):
             return True
     return False
 
-# Example usage
-
-## Hardcoding affine = False 
 
 import sys
 
-# Example of removing specific arguments
-args_to_remove = [
-
-('--display_freq', str(opt.display_freq)),
-
-('--experiment_name', opt.experiment_name),
-
-('--niter', str(opt.niter)),
-
-('--niter_decay', str(opt.niter_decay)),
-
-('--save_epoch_freq', str(opt.save_epoch_freq)),
-
-('--resume_distill_epoch', str(opt.resume_distill_epoch)),
-
-('--alpha', str(opt.alpha)),
-
-('--alpha1', str(opt.alpha1)),
-
-('--alpha2', str(opt.alpha2)),
-
-('--alpha3', str(opt.alpha3)),
-
-('--alpha4', str(opt.alpha4)),
-
-('--alpha5', str(opt.alpha5)),
-
-('--aim_repo', str(opt.aim_repo)),
-
-('--no_ganFeat_loss', str(opt.no_ganFeat_loss)),
-
-('--accum_iter', str(opt.accum_iter)),
-
-
-]
-
-print(" args:", sys.argv)
-filtered_args = []
-skip_next = False
-
-for i, arg in enumerate(sys.argv):
-    if skip_next:
-        skip_next = False
-        continue
-    # if i + 1 < len(sys.argv):
-    #     print(arg,sys.argv[i + 1])
-    # for key, value in args_to_remove:
-    #     if key==arg:
-    #         print(value, sys.argv[i+1], sys.argv[i+1]==value)
-    # print([f'\n key = {key}' for key, v in args_to_remove])
-
-    if any(arg == key and (i + 1 < len(sys.argv) and sys.argv[i + 1] == value) for key, value in args_to_remove):
-        skip_next = True  # Skip the next value since it's part of the key-value pair to remove
-    else:
-        print(f'arg added = {arg}')
-        if arg not in ['--resume_distill_epoch','--no_ganFeat_loss','--wavelet', '--teacher_adv', '--teacher_feat', '--teacher_vgg', '--aim_repo']:
-            filtered_args.append(arg)
-
-sys.argv = filtered_args
-
-
-test_opt = TestOptions().parse(save=False)
+test_opt = opt
 test_opt.no_flip=True
 test_opt.loadSize = 1024
 test_opt.fineSize = 1024
@@ -216,7 +156,7 @@ test_data_loader = CreateDataLoader(test_opt)
 test_dataset = test_data_loader.load_data()
 test_dataset_size = len(test_dataset)
 
-
+# setting validation options
 val_opt = test_opt
 val_opt.phase = 'val'
 val_data_loader = CreateDataLoader(val_opt)
@@ -299,6 +239,10 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
     j = -1
     for i, data in enumerate(tqdm(dataset), start=epoch_iter):
         j +=1
+        # with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA], record_shapes=True) as prof:
+        if opt.debug_script:
+            if j > 10:
+                break
         if total_steps % opt.print_freq == print_delta:
             iter_start_time = time.time()
         if epoch ==11:
@@ -311,28 +255,39 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
         
 
         ############## Forward Pass ######################
-        if j == 0:
-            losses, generated = model.forward(Variable(data['label']), Variable(data['inst']), 
-                Variable(data['image']),Variable(data['image']), Variable(data['feat']),infer=True, teacher_adv = opt.teacher_adv,
-                teacher_feat = opt.teacher_feat,teacher_vgg = opt.teacher_vgg)
-        else:
-            losses, generated = model.forward(Variable(data['label']), Variable(data['inst']), 
-                Variable(data['image']), Variable(data['image']), Variable(data['feat']),infer=False, teacher_adv = opt.teacher_adv,
-                teacher_feat = opt.teacher_feat,teacher_vgg = opt.teacher_vgg)       
+        losses, generated = model.forward(Variable(data['label']), Variable(data['inst']), 
+            Variable(data['image']),Variable(data['image']), Variable(data['feat']),infer=True, teacher_adv = opt.teacher_adv,
+            teacher_feat = opt.teacher_feat,teacher_vgg = opt.teacher_vgg)
+
+
 
         # sum per device losses
         losses = [ torch.mean(x) if not isinstance(x, int) else x for x in losses ]
         loss_dict = dict(zip(model.module.loss_names, losses))
 
+
+        
         # calculate final loss scalar
         loss_D = (loss_dict['D_fake'] + loss_dict['D_real']) * 0.5
         loss_G = loss_dict['G_GAN'] + loss_dict.get('G_GAN_Feat',0) + loss_dict.get('G_VGG',0)
         distloss = 0
-        # _ = model.module.netG(data['label'].cuda())
-        # distloss = opt.alpha1*dloss1(data['label'], run, whitening= False) + opt.alpha2*dloss2(data['label'], run, whitening= False) + opt.alpha3*dloss3(data['label'], run, whitening= False)
-        # + opt.alpha4*dloss4(data['label'], run, whitening= False) + opt.alpha5*dloss5(data['label'], run, whitening= False)
-        # # sum = (model.module.netG.alpha1+model.module.netG.alpha2+model.module.netG.alpha3+model.module.netG.alpha4+model.module.netG.alpha5)
-        # loss_G += ( distloss.squeeze() )* opt.alpha
+
+
+
+        # with record_function("OFLoss"):
+        #     if opt.alpha_temporal != 0:
+
+        #         gt1 = data['image'].cuda()
+        #         gt2 = data['next_image'].cuda()
+
+        #         with torch.no_grad(): generated2 = model.module.netG(data['new_label'].cuda())
+        #         if i == 0:
+        #             tl = temp_loss(generated,generated2,gt1,gt2)
+        #         else:
+        #             tl = temp_loss(generated,generated2,gt1,gt2)
+
+        #         loss_G += tl*opt.alpha_temporal
+
 
         model.module.netD.requires_grad_(False)
         loss_G.backward()
@@ -351,8 +306,8 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
             optimizer_D.zero_grad()
 
 
-        ############### Backward Pass ####################
-        # update generator weights
+            ############### Backward Pass ####################
+            # update generator weights
 
 
 
@@ -366,29 +321,16 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
             #call(["nvidia-smi", "--format=csv", "--query-gpu=memory.used,memory.free"]) 
 
 
-        if j ==0:
-            gen1 = Image(util.tensor2im(generated.data[0]))
-            real1 = Image(util.tensor2im(data['image'][0]))
-            diff1 = Image(util.tensor2im(data['label'][0][:3]))
-            ref = Image(util.tensor2im(data['label'][0][3:6]))
-            rad = Image(util.tensor2im(data['label'][0][6:9]))
-            depth = Image((data['label'][0][9])*0.5 + 0.5)
-            normal = Image((data['label'][0][10:13])*0.5 + 0.5)
-
-            run.track(gen1, name = 'generated image')
-            run.track(real1, name = 'real image')
-            run.track(diff1, name = 'Diffuse')
-            run.track(ref, name = 'Reflection')
-            run.track(rad, name = 'Radiance')
-            run.track(depth, name = 'Depth')
-            run.track(normal, name = 'Normal')
-            
+        if j %  100 ==0:
             # tracking metrics with AIM
             run.track(loss_D.detach(), name = 'Disriminator loss')
             run.track(loss_dict['G_GAN'].detach(), name = 'GAN loss (default is hinge)')
             run.track(loss_dict.get('G_GAN_Feat',0).detach(), name = 'Feature Loss')
             run.track(loss_dict.get('G_VGG',0).detach(), name = 'VGG loss')
-
+            
+        # prof.export_chrome_trace("trace.json")
+        # raise ValueError('Exported')
+        
     # end of epoch 
     iter_end_time = time.time()
     print('End of epoch %d / %d \t Time Taken: %d sec' %
@@ -397,7 +339,6 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
 
 
     if epoch % opt.save_epoch_freq == 0:
-        print('saving the model at the end of epoch %d, iters %d' % (epoch, total_steps))        
         torch.save(model.module.optimizer_G.state_dict(), f'checkpoints/{opt.name}/epoch_{epoch}_optim-0.pth')
         torch.save(model.module.optimizer_D.state_dict(), f'checkpoints/{opt.name}/epoch_{epoch}_optim-1.pth')
         torch.save(model.module.netG.state_dict(), f'checkpoints/{opt.name}/epoch_{epoch}_netG.pth')
@@ -408,23 +349,40 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
         os.makedirs(f'fake/{opt.experiment_name}', exist_ok=True)
         os.makedirs(f'real/{opt.experiment_name}', exist_ok=True)
 
-        model = model.eval()
-        for i, data in tqdm(enumerate(test_dataset)):  
-            if i > 2000:
+        for i, data in tqdm(enumerate(test_dataset)):   
+            if opt.debug_script:
+                if i > 55:
+                    break
+            elif i > 2000:
                 break
-            ############## Forward Pass ######################
-            with torch.no_grad():
-                losses, generated = model.forward(Variable(data['label']), Variable(data['inst']), 
-                    Variable(data['image']), Variable(data['image']), Variable(data['feat']),infer=True)
-                gen1 = (util.tensor2im(generated.data[0]))
-                real1 = (util.tensor2im(data['image'][0]))
+            if i <= 1:
+                labels = data['label']  # A list of tensors
+                images = data['image']  # A list of tensors
 
+                tensors = labels
+                with torch.no_grad():
+                    generated = model.module.netG(tensors.cuda())
+
+            else:
+                labels = data['label'].cuda()  # A list of tensors
+                images = data['image']  # A list of tensors
+
+                tensors = labels
+                gen1 = (util.tensor2im(generated[0]))
+                cv2.imwrite(f'pregen/{opt.experiment_name}/{i}.png', gen1[:,:,::-1])
+
+                with torch.no_grad():
+                    generated = model.module.netG(tensors.cuda())
+                gen1 = (util.tensor2im(generated[0]))
+                real1 = (util.tensor2im(data['image'][0].squeeze()))
                 cv2.imwrite(f'fake/{opt.experiment_name}/{i}.png', gen1[:,:,::-1])
                 cv2.imwrite(f'real/{opt.experiment_name}/{i}.png', real1[:,:,::-1])
-            
 
-        
+
+
+            
         torch.cuda.empty_cache()
+
         fid = dir_fid(f'fake/{opt.experiment_name}', f'real/{opt.experiment_name}')
         lpipzz = dir_lpips(f'fake/{opt.experiment_name}', f'real/{opt.experiment_name}')
         psnr = dir_psnr(f'fake/{opt.experiment_name}', f'real/{opt.experiment_name}')
@@ -437,47 +395,61 @@ for epoch in range(new_start_epoch, opt.niter + opt.niter_decay + 1):
 
 
 
-        # on the validation dataset
+
         os.makedirs('fake', exist_ok=True)
         os.makedirs('real', exist_ok=True)
-        os.makedirs('input', exist_ok=True)
+        os.makedirs(f'fake/{opt.experiment_name}_val', exist_ok=True)
+        os.makedirs(f'real/{opt.experiment_name}_val', exist_ok=True)
 
-        os.makedirs(f'fake/{opt.experiment_name}_validation-tr', exist_ok=True)
-        os.makedirs(f'real/{opt.experiment_name}_validation-tr', exist_ok=True)
-        os.makedirs(f'input/{opt.experiment_name}_validation-tr', exist_ok=True)
 
-        model = model.eval()
         for i, data in tqdm(enumerate(val_dataset)):   
-            ############## Forward Pass ######################
-            with torch.no_grad():
-                losses, generated = model.forward(Variable(data['label']), Variable(data['inst']), 
-                    Variable(data['image']), Variable(data['image']), Variable(data['feat']),infer=True)
-                gen1 = (util.tensor2im(generated.data[0]))
-                real1 = (util.tensor2im(data['image'][0]))
+            if opt.debug_script:
+                if i > 55:
+                    break
+            elif i > 2000:
+                break
 
-                cv2.imwrite(f'fake/{opt.experiment_name}_validation-tr/{i}.png', gen1[:,:,::-1])
-                cv2.imwrite(f'real/{opt.experiment_name}_validation-tr/{i}.png', real1[:,:,::-1])
+            if i <= 1:
+                labels = data['label'].cuda()  # A list of tensors
+
+                tensors = labels
+                with torch.no_grad():
+                    generated = model.module.netG(tensors.cuda())
+
+            else:
+                labels = data['label'].cuda()  # A list of tensors
+
+                tensors = labels
+                gen1 = (util.tensor2im(generated[0]))
+                cv2.imwrite(f'pregen/{opt.experiment_name}/{i}.png', gen1[:,:,::-1])
+
+                with torch.no_grad():
+                    generated = model.module.netG(tensors.cuda())
+                gen1 = (util.tensor2im(generated[0]))
+                real1 = (util.tensor2im(data['image'][0].squeeze()))
+                cv2.imwrite(f'fake/{opt.experiment_name}_val/{i}.png', gen1[:,:,::-1])
+                cv2.imwrite(f'real/{opt.experiment_name}_val/{i}.png', real1[:,:,::-1])
+
+
 
 
 
         del gen1
         del real1
 
+        fid = dir_fid(f'fake/{opt.experiment_name}_val', f'real/{opt.experiment_name}_val')
+        lpipzz = dir_lpips(f'fake/{opt.experiment_name}_val', f'real/{opt.experiment_name}_val')
+        psnr = dir_psnr(f'fake/{opt.experiment_name}_val', f'real/{opt.experiment_name}_val')
+        tpsnr = dir_tpsnr(f'fake/{opt.experiment_name}_val', f'real/{opt.experiment_name}_val')
+        
+        run.track(psnr, name='validation PSNR')
+        run.track(tpsnr, name='validation tPSNR')
+        run.track(fid, name = 'validation FID')
+        run.track(lpipzz, name = 'validation LPIPS')
 
-        
-        torch.cuda.empty_cache()
-        fid = dir_fid(f'fake/{opt.experiment_name}_validation-tr', f'real/{opt.experiment_name}_validation-tr')
-        lpipzz = dir_lpips(f'fake/{opt.experiment_name}_validation-tr', f'real/{opt.experiment_name}_validation-tr')
-        psnr = dir_psnr(f'fake/{opt.experiment_name}_validation-tr', f'real/{opt.experiment_name}_validation-tr')
-        tpsnr = dir_tpsnr(f'fake/{opt.experiment_name}_validation-tr', f'real/{opt.experiment_name}_validation-tr')
-        
-        run.track(psnr, name='validation PSNR', step = epoch)
-        run.track(tpsnr, name='validation tPSNR', step = epoch)
-        run.track(fid, name = 'validation FID', step = epoch)
-        run.track(lpipzz, name = 'validation LPIPS', step = epoch)
 
     model = model.train()
-
+    torch.cuda.empty_cache()
     ### instead of only training the local enhancer, train the entire network after certain iterations
     if (opt.niter_fix_global != 0) and (epoch == opt.niter_fix_global):
         model.module.update_fixed_params()

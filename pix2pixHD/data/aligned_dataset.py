@@ -15,66 +15,57 @@ class AlignedDataset(BaseDataset):
         self.root = opt.dataroot    
 
         if opt.phase == 'train' or opt.phase == 'test':
-            ### input A (label maps)
-            # dir_A = '_A' if self.opt.label_nc == 0 else '_label'
-            # self.dir_A = "/home/ubuntu/utah/1992024_1_6001/1780_Validation_Input/" #os.path.join(opt.dataroot, opt.phase + dir_A)
-            # self.B_paths = sorted(make_dataset(self.dir_A))
-
             ### input B (real images)
             if opt.isTrain or opt.use_encoded_image:
                 dir_B = '_B' if self.opt.label_nc == 0 else '_img'
-                self.dir_B = "/home/ubuntu/utah/DATASET-11-10-24/8102024_1_50003/UE"#os.path.join(opt.dataroot, opt.phase + dir_B)  
+                self.dir_B = os.path.join(opt.dataroot,'Train', 'UE')  
                 self.B_paths = sorted(make_dataset(self.dir_B))
 
             ### Depth
-            self.dir_depth = "/home/ubuntu/Forge1/Depths"#os.path.join(opt.dataroot, "PCOData")  
+            self.dir_depth = os.path.join(opt.dataroot,'Train', 'Depths')  
             self.depth_paths = sorted(make_dataset(self.dir_depth))
 
             ### Normal
-            self.dir_normal = "/home/ubuntu/Forge1/Normals"#os.path.join(opt.dataroot, "Normal")  
+            self.dir_normal = os.path.join(opt.dataroot,'Train', "Normals")  
             self.normal_paths = sorted(make_dataset(self.dir_normal))
 
-            self.dir_diffuse = "/home/ubuntu/Forge1/Diffuses"
+            self.dir_diffuse = os.path.join(opt.dataroot,'Train', "Diffuses")  
             self.diffuse_paths = sorted(make_dataset(self.dir_diffuse))
 
-            self.dir_reflection = "/home/ubuntu/Forge1/Reflections"
+            self.dir_reflection = os.path.join(opt.dataroot,'Train', "Reflections")  
             self.reflection_paths = sorted(make_dataset(self.dir_reflection))
 
-            self.dir_radiance = "/home/ubuntu/Forge1/Radiances"
+            self.dir_radiance = os.path.join(opt.dataroot,'Train', "Radiances")
             self.radiance_paths = sorted(make_dataset(self.dir_radiance))
 
 
         elif opt.phase =='val':
-            ### input A (label maps)
-            # dir_A = '_A' if self.opt.label_nc == 0 else '_label'
-            # self.dir_A = "/home/ubuntu/utah/1992024_1_6001/1780_Validation_Input/" #os.path.join(opt.dataroot, opt.phase + dir_A)
-            # self.B_paths = sorted(make_dataset(self.dir_A))
-
-            ### input B (real images)
             if opt.isTrain or opt.use_encoded_image:
                 dir_B = '_B' if self.opt.label_nc == 0 else '_img'
-                self.dir_B = "/home/ubuntu/utah/DATASET-11-10-24/TestDataset/UE"#os.path.join(opt.dataroot, opt.phase + dir_B)  
+                self.dir_B = os.path.join(opt.dataroot,'Val', 'UE')  
                 self.B_paths = sorted(make_dataset(self.dir_B))
 
             ### Depth
-            self.dir_depth = "/home/ubuntu/utah/DATASET-11-10-24/TestDataset/Depths"#os.path.join(opt.dataroot, "PCOData")  
+            self.dir_depth = os.path.join(opt.dataroot,'Val', 'Depths')  
             self.depth_paths = sorted(make_dataset(self.dir_depth))
 
             ### Normal
-            self.dir_normal = "/home/ubuntu/utah/DATASET-11-10-24/TestDataset/Normals"#os.path.join(opt.dataroot, "Normal")  
+            self.dir_normal = os.path.join(opt.dataroot,'Val', "Normals")  
             self.normal_paths = sorted(make_dataset(self.dir_normal))
 
-            self.dir_diffuse = "/home/ubuntu/utah/DATASET-11-10-24/TestDataset/Diffuses"
+            self.dir_diffuse = os.path.join(opt.dataroot,'Val', "Diffuses")  
             self.diffuse_paths = sorted(make_dataset(self.dir_diffuse))
 
-            self.dir_reflection = "/home/ubuntu/utah/DATASET-11-10-24/TestDataset/Reflections"
+            self.dir_reflection = os.path.join(opt.dataroot,'Val', "Reflections")  
             self.reflection_paths = sorted(make_dataset(self.dir_reflection))
 
-            self.dir_radiance = "/home/ubuntu/utah/DATASET-11-10-24/TestDataset/Radiances"
+            self.dir_radiance = os.path.join(opt.dataroot,'Val', "Radiances")
             self.radiance_paths = sorted(make_dataset(self.dir_radiance))
 
         else:
             raise ValueError()
+
+
         if opt.isTrain:
             assert len(self.B_paths) == len(self.B_paths), f"{len(self.B_paths)}_{len(self.B_paths)} \n {self.dir_A}_{self.dir_B}"
             
@@ -163,7 +154,7 @@ class AlignedDataset(BaseDataset):
                 obj_id = F.interpolate(obj_id, size=(512, 512), mode='bicubic', align_corners=False)
                 
         else:
-            q=q
+            raise ValueError()
 
         p = A_tensor
         A_tensor = torch.cat((diffuse_tensor,reflection_tensor,radiance_tensor, 

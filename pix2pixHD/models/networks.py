@@ -4,11 +4,11 @@ import functools
 from torch.autograd import Variable
 import numpy as np
 import k_diffusion as K
-from resample2d import Resample2d
+# from resample2d import Resample2d
 
 import sys
-sys.path.append('/home/ubuntu/tdist-flat')
-from flownet.models1 import FlowNet2
+# sys.path.append('/home/ubuntu/tdist-flat')
+# from flownet.models1 import FlowNet2
 
 ###############################################################################
 # Functions

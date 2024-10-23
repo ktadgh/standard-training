@@ -1,6 +1,7 @@
 from torch.nn.modules.module import Module
 from torch.autograd import Function, Variable
 import resample2d_cuda
+import torch
 
 class Resample2dFunction(Function):
 
@@ -45,5 +46,6 @@ class Resample2d(Module):
         self.bilinear = bilinear
 
     def forward(self, input1, input2):
-        input1_c = input1.contiguous()
-        return Resample2dFunction.apply(input1_c, input2, self.kernel_size, self.bilinear)
+        with torch.cuda.device_of(input1_c):
+            input1_c = input1.contiguous()
+            return Resample2dFunction.apply(input1_c, input2, self.kernel_size, self.bilinear)
